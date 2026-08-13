@@ -51,6 +51,73 @@ fn now_utc() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
+/// Set once setup completes; the launch guard exits the process with an
+/// explanation if this never happens.
+static SETUP_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn read_reg_value(key: &str, value: &str) -> String {
+    std::process::Command::new("reg")
+        .args(["query", key, "/v", value])
+        .output()
+        .ok()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|l| l.contains(value))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn webview2_version() -> String {
+    let machine = read_reg_value(
+        r"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        "pv",
+    );
+    if !machine.is_empty() {
+        return machine;
+    }
+    read_reg_value(
+        r"HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        "pv",
+    )
+}
+
+/// WebView2 is the one thing the exe cannot carry inside itself. Warn
+/// before window creation, because a broken runtime hangs, not errors.
+fn preflight_webview2() {
+    if webview2_version().is_empty() {
+        message_box(
+            "TagFix: WebView2 runtime not detected",
+            "TagFix draws its overlay with Microsoft WebView2, which does not seem to be installed on this machine.\n\nInstall the WebView2 Evergreen runtime from:\nhttps://developer.microsoft.com/microsoft-edge/webview2\n\nTagFix will try to start anyway; if nothing appears it will exit with a message after 20 seconds.",
+        );
+    }
+}
+
+/// If initialization wedges (typically WebView2 refusing to come up),
+/// exit with an explanation instead of sitting as a ghost window.
+fn launch_guard() {
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(20));
+        if !SETUP_DONE.load(std::sync::atomic::Ordering::SeqCst) {
+            let msg = format!(
+                "{} TagFix failed to finish starting within 20 seconds; webview2 detected: '{}'",
+                now_utc(),
+                webview2_version()
+            );
+            let _ = std::fs::write(exe_dir().join("tagfix-error.log"), &msg);
+            message_box(
+                "TagFix could not start",
+                "TagFix did not finish starting within 20 seconds and shut itself down.\n\nThis usually means the WebView2 runtime on this machine is missing, broken, or blocked by security software.\n\nRun tagfix diag from a terminal and send tagfix-diag.txt together with tagfix-error.log.",
+            );
+            std::process::exit(1);
+        }
+    });
+}
+
 /// Native message box, used for fatal errors and watchdog notices so the
 /// user is never left guessing at a silent failure.
 fn message_box(title: &str, text: &str) {
@@ -635,27 +702,17 @@ fn run_diag() -> i32 {
     out.push_str(&format!("TagFix diag {} at {}\n", env!("CARGO_PKG_VERSION"), now_utc()));
     out.push_str(&format!("exe: {}\n", std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()));
 
-    let reg = |key: &str, value: &str| -> String {
-        std::process::Command::new("reg")
-            .args(["query", key, "/v", value])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).lines().filter(|l| l.contains(value)).collect::<Vec<_>>().join(" "))
-            .unwrap_or_default()
-            .trim()
-            .to_string()
-    };
-
     out.push_str(&format!(
         "os: {} / {}\n",
-        reg(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductName"),
-        reg(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuild")
+        read_reg_value(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductName"),
+        read_reg_value(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuild")
     ));
 
-    let wv_machine = reg(r"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "pv");
-    let wv_user = reg(r"HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "pv");
-    out.push_str(&format!("webview2 machine: {}\n", if wv_machine.is_empty() { "NOT FOUND".into() } else { wv_machine }));
-    out.push_str(&format!("webview2 user: {}\n", if wv_user.is_empty() { "not present (fine if machine level exists)".into() } else { wv_user }));
+    let wv = webview2_version();
+    out.push_str(&format!(
+        "webview2 runtime: {}\n",
+        if wv.is_empty() { "NOT FOUND (install the WebView2 Evergreen runtime)".into() } else { wv }
+    ));
 
     unsafe {
         let dwm = windows::Win32::Graphics::Dwm::DwmIsCompositionEnabled();
@@ -731,6 +788,9 @@ fn main() {
         }
         std::process::exit(run_sweep_cli(&args[2..]));
     }
+
+    preflight_webview2();
+    launch_guard();
 
     tauri::Builder::default()
         .manage(AppState {
@@ -826,14 +886,6 @@ fn main() {
                 &[&arm_item, &review_item, &sweeps_item, &settings_item, &help_item, &quit_item],
             )?;
 
-            // First launch: show the how-to window once.
-            let mut startup_settings = settings::load(&exe_dir());
-            if !startup_settings.help_shown {
-                open_help(&handle);
-                startup_settings.help_shown = true;
-                let _ = settings::save(&exe_dir(), &startup_settings);
-            }
-
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("TagFix")
@@ -849,6 +901,23 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+
+            SETUP_DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+
+            // First launch: show the how-to window once, off the setup
+            // path so a second webview never contends with the overlay
+            // still initializing.
+            let mut startup_settings = settings::load(&exe_dir());
+            if !startup_settings.help_shown {
+                startup_settings.help_shown = true;
+                let _ = settings::save(&exe_dir(), &startup_settings);
+                let delayed = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    let inner = delayed.clone();
+                    let _ = delayed.run_on_main_thread(move || open_help(&inner));
+                });
+            }
 
             Ok(())
         })

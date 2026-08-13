@@ -72,9 +72,14 @@ tagfix diag                machine report (WebView2, monitors, hotkeys),
 On first launch TagFix opens a How to use window with every hotkey and the
 full flow; reopen it any time from the tray menu. If arming ever fails to
 draw the overlay, TagFix disarms itself within six seconds and says so
-instead of covering the screen. Fatal errors are written to
-tagfix-error.log next to the exe. When reporting a problem, run
-`tagfix diag` and include tagfix-diag.txt.
+instead of covering the screen. If startup itself cannot finish, for
+example because the WebView2 runtime is missing, broken, or blocked by
+security software, TagFix exits with an explanation after 20 seconds
+rather than hanging. On Windows 10, or any machine where TagFix reports
+WebView2 missing, install the WebView2 Evergreen runtime from
+https://developer.microsoft.com/microsoft-edge/webview2 first. Fatal
+errors are written to tagfix-error.log next to the exe. When reporting a
+problem, run `tagfix diag` and include tagfix-diag.txt.
 
 ## Data layout
 
