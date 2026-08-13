@@ -14,6 +14,7 @@ pub struct Settings {
     pub hotkey: String,
     pub output_dir: Option<String>,
     pub launch_at_login: bool,
+    pub help_shown: bool,
 }
 
 impl Default for Settings {
@@ -22,6 +23,7 @@ impl Default for Settings {
             hotkey: DEFAULT_HOTKEY.to_string(),
             output_dir: None,
             launch_at_login: false,
+            help_shown: false,
         }
     }
 }
@@ -87,6 +89,7 @@ mod tests {
             hotkey: "ctrl+alt+f9".into(),
             output_dir: Some("D:\\sweeps".into()),
             launch_at_login: true,
+            help_shown: true,
         };
         save(&dir, &s).unwrap();
         assert_eq!(load(&dir), s);

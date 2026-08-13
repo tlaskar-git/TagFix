@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>How to use TagFix</title>
+  <link rel="stylesheet" href="help.css">
+</head>
+<body>
+  <h1>TagFix</h1>
+  <p class="tagline">Tag what is wrong on screen, get a fix list out.</p>
+
+  <h2>Hotkeys</h2>
+  <table>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td>
+        <td>Arm or disarm the overlay (changeable in Settings)</td></tr>
+    <tr><td><kbd>Esc</kbd></td>
+        <td>Cancel the open tag entry, or disarm</td></tr>
+    <tr><td><kbd>Enter</kbd></td>
+        <td>Save the tag and stay armed for the next one</td></tr>
+    <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td>
+        <td>Newline inside the tag text</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td>
+        <td>Open review and export</td></tr>
+  </table>
+
+  <h2>The flow</h2>
+  <ol>
+    <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>. A red frame and
+      an ARMED badge appear and the cursor becomes a crosshair. If the
+      screen looks wrong instead, TagFix disarms itself after a few
+      seconds; run the diagnosis below and send the output.</li>
+    <li>Drag a box around the thing that is wrong. Release.</li>
+    <li>Type what is wrong in the popover. Pick severity (high, medium,
+      low) and area (layout, copy, a11y, behaviour, other) or keep the
+      defaults.</li>
+    <li>Press <kbd>Enter</kbd>. You are armed again; tag the next thing.</li>
+    <li>Press <kbd>Esc</kbd> when done.</li>
+    <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>, tidy the list
+      (drag to reorder, click text to edit, drop what you do not want),
+      then press Export fix list.</li>
+  </ol>
+  <p>Export writes three files into the sweep folder and puts a pointer to
+    brief.md on the clipboard: fixlist.md (evidence ledger), fixlist.html
+    (single file, opens anywhere offline), brief.md (agent brief with one
+    task and acceptance criterion per tag).</p>
+
+  <h2>Where things live</h2>
+  <p>Sweeps land in a <code>sweeps</code> folder next to tagfix.exe, one
+    folder per sweep with sweep.json plus the tag PNGs. Change the location
+    in Settings (tray icon, Settings).</p>
+
+  <h2>Command line</h2>
+  <table>
+    <tr><td><code>tagfix sweep new &lt;slug&gt;</code></td>
+        <td>Create a sweep folder for today</td></tr>
+    <tr><td><code>tagfix sweep list</code></td>
+        <td>List sweeps with tag counts</td></tr>
+    <tr><td><code>tagfix diag</code></td>
+        <td>Print a machine report (WebView2, monitors, hotkeys) and write
+          tagfix-diag.txt; send this if something misbehaves</td></tr>
+  </table>
+
+  <p class="footer">Reopen this window any time: tray icon, How to use.</p>
+  <script src="help.js"></script>
+</body>
+</html>

@@ -63,7 +63,18 @@ dependency is the WebView2 runtime, which is part of Windows 11 itself.
 ```
 tagfix sweep new <slug>    create a sweep folder for today
 tagfix sweep list          list sweeps with tag counts
+tagfix diag                machine report (WebView2, monitors, hotkeys),
+                           also written to tagfix-diag.txt next to the exe
 ```
+
+## If something misbehaves
+
+On first launch TagFix opens a How to use window with every hotkey and the
+full flow; reopen it any time from the tray menu. If arming ever fails to
+draw the overlay, TagFix disarms itself within six seconds and says so
+instead of covering the screen. Fatal errors are written to
+tagfix-error.log next to the exe. When reporting a problem, run
+`tagfix diag` and include tagfix-diag.txt.
 
 ## Data layout
 

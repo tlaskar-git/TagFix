@@ -1,6 +1,6 @@
 [package]
 name = "tagfix"
-version = "0.1.1"
+version = "0.1.2"
 description = "Tag what is wrong on screen, get a fix list out."
 authors = ["tlaskar-git"]
 edition = "2021"
@@ -20,8 +20,10 @@ windows-capture = "1"
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Threading",
     "Win32_System_Console",
+    "Win32_Graphics_Dwm",
 ] }
 
 [lib]
