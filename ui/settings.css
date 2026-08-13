@@ -1,0 +1,68 @@
+body {
+  margin: 0;
+  padding: 20px;
+  background: #17171a;
+  color: #ececee;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+
+label {
+  display: block;
+  margin-bottom: 14px;
+  color: #b8b8bd;
+}
+
+label input[type="text"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  background: #2a2a2e;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  padding: 7px;
+  font-size: 13px;
+}
+
+label small {
+  display: block;
+  color: #6b6b70;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ececee;
+}
+
+#actions {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#save-btn {
+  background: #e5484d;
+  color: #fff;
+  border: 1px solid #e5484d;
+  border-radius: 4px;
+  padding: 7px 18px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#status {
+  color: #8b8b90;
+  font-size: 12px;
+}
