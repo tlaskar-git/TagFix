@@ -55,7 +55,8 @@ phases are delivered.
 
 ## Phase 5: review and export
 
-1. Tray menu, Review and export. Expect: tags listed in order.
+1. `Ctrl+Shift+R` (or tray menu, Review and export). Expect: tags listed in
+   order.
 2. Drag a row to a new position, close and reopen the window. Expect: order
    kept.
 3. Edit text, change severity, drop a tag. Expect: changes persist;

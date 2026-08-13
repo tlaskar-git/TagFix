@@ -33,7 +33,8 @@ pub fn settings_path(exe_dir: &Path) -> PathBuf {
 pub fn load(exe_dir: &Path) -> Settings {
     let path = settings_path(exe_dir);
     match std::fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+        // Tolerate a UTF-8 BOM: hand-edited files often carry one.
+        Ok(raw) => serde_json::from_str(raw.trim_start_matches('\u{feff}')).unwrap_or_default(),
         Err(_) => Settings::default(),
     }
 }
@@ -100,6 +101,16 @@ mod tests {
         assert!(s.launch_at_login);
         assert_eq!(s.hotkey, DEFAULT_HOTKEY);
         assert_eq!(s.output_dir, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_tolerates_utf8_bom() {
+        let dir = tmp_dir("bom");
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(br#"{"hotkey":"ctrl+alt+f9"}"#);
+        std::fs::write(settings_path(&dir), bytes).unwrap();
+        assert_eq!(load(&dir).hotkey, "ctrl+alt+f9");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
