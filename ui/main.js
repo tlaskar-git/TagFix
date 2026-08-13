@@ -18,6 +18,8 @@ function renderArmed(value) {
   document.body.classList.toggle("armed", armed);
   document.body.classList.toggle("disarmed", !armed);
   if (armed) {
+    // Tell the watchdog the armed UI actually made it to the screen.
+    requestAnimationFrame(() => invoke("overlay_ready"));
     refreshCounter();
   } else {
     closeEntry();

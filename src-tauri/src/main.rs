@@ -41,10 +41,45 @@ struct AppState {
     arm_ctx: Mutex<Option<ArmContext>>,
     pending: Mutex<Option<PendingTag>>,
     hotkey: Mutex<String>,
+    /// Bumped on every arm; the overlay JS echoes it back via
+    /// overlay_ready so a dead webview is detectable.
+    arm_epoch: Mutex<u64>,
+    ready_epoch: Mutex<u64>,
 }
 
 fn now_utc() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Native message box, used for fatal errors and watchdog notices so the
+/// user is never left guessing at a silent failure.
+fn message_box(title: &str, text: &str) {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONWARNING, MB_OK};
+    unsafe {
+        MessageBoxW(
+            None,
+            &HSTRING::from(text),
+            &HSTRING::from(title),
+            MB_OK | MB_ICONWARNING,
+        );
+    }
+}
+
+/// Panics get written next to the exe and shown to the user instead of
+/// vanishing (the release binary has no console).
+fn install_panic_reporter() {
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("{} {}", now_utc(), info);
+        let _ = std::fs::write(exe_dir().join("tagfix-error.log"), &msg);
+        message_box(
+            "TagFix hit a fatal error",
+            &format!(
+                "TagFix could not continue.\n\n{}\n\nDetails were written to tagfix-error.log next to tagfix.exe. Run tagfix diag and send both files.",
+                info
+            ),
+        );
+    }));
 }
 
 /// Debug-build trace log next to the exe; a no-op in release builds.
@@ -187,6 +222,39 @@ fn apply_armed(app: &AppHandle, armed: bool) {
     }
 
     let _ = app.emit("armed-changed", armed);
+
+    // Watchdog: if the overlay webview never confirms it rendered, disarm
+    // rather than leave a possibly opaque window over the desktop.
+    if armed {
+        let epoch = {
+            let state: State<AppState> = app.state();
+            let mut e = state.arm_epoch.lock().unwrap();
+            *e += 1;
+            *e
+        };
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(6));
+            let state: State<AppState> = handle.state();
+            let still_armed = *state.armed.lock().unwrap();
+            let ready = *state.ready_epoch.lock().unwrap();
+            if still_armed && ready < epoch {
+                drop(state);
+                apply_armed(&handle, false);
+                message_box(
+                    "TagFix disarmed itself",
+                    "The overlay did not draw within 6 seconds, so TagFix disarmed to keep the desktop usable.\n\nRun tagfix diag from a terminal and send tagfix-diag.txt.",
+                );
+            }
+        });
+    }
+}
+
+/// The overlay JS calls this as soon as the armed UI is on screen.
+#[tauri::command]
+fn overlay_ready(state: State<AppState>) {
+    let epoch = *state.arm_epoch.lock().unwrap();
+    *state.ready_epoch.lock().unwrap() = epoch;
 }
 
 fn toggle_armed(app: &AppHandle) {
@@ -477,6 +545,18 @@ fn open_review(app: &AppHandle) {
         .build();
 }
 
+fn open_help(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("help") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = WebviewWindowBuilder::new(app, "help", WebviewUrl::App("help.html".into()))
+        .title("How to use TagFix")
+        .inner_size(560.0, 720.0)
+        .build();
+}
+
 fn open_sweeps_folder() {
     let dir = sweeps_dir();
     let _ = std::fs::create_dir_all(&dir);
@@ -548,8 +628,99 @@ fn run_sweep_cli(rest: &[String]) -> i32 {
     }
 }
 
+/// `tagfix diag`: environment report for debugging misbehaving machines.
+/// Prints to the console and writes tagfix-diag.txt next to the exe.
+fn run_diag() -> i32 {
+    let mut out = String::new();
+    out.push_str(&format!("TagFix diag {} at {}\n", env!("CARGO_PKG_VERSION"), now_utc()));
+    out.push_str(&format!("exe: {}\n", std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()));
+
+    let reg = |key: &str, value: &str| -> String {
+        std::process::Command::new("reg")
+            .args(["query", key, "/v", value])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).lines().filter(|l| l.contains(value)).collect::<Vec<_>>().join(" "))
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+
+    out.push_str(&format!(
+        "os: {} / {}\n",
+        reg(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductName"),
+        reg(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuild")
+    ));
+
+    let wv_machine = reg(r"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "pv");
+    let wv_user = reg(r"HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}", "pv");
+    out.push_str(&format!("webview2 machine: {}\n", if wv_machine.is_empty() { "NOT FOUND".into() } else { wv_machine }));
+    out.push_str(&format!("webview2 user: {}\n", if wv_user.is_empty() { "not present (fine if machine level exists)".into() } else { wv_user }));
+
+    unsafe {
+        let dwm = windows::Win32::Graphics::Dwm::DwmIsCompositionEnabled();
+        out.push_str(&format!("dwm composition: {:?}\n", dwm));
+    }
+
+    match windows_capture::monitor::Monitor::enumerate() {
+        Ok(mons) => {
+            out.push_str(&format!("monitors: {}\n", mons.len()));
+            for m in mons {
+                out.push_str(&format!(
+                    "  index {:?} device {:?} size {:?}x{:?} refresh {:?}\n",
+                    m.index().ok(),
+                    m.device_name().ok(),
+                    m.width().ok(),
+                    m.height().ok(),
+                    m.refresh_rate().ok()
+                ));
+            }
+        }
+        Err(e) => out.push_str(&format!("monitors: ENUMERATION FAILED: {}\n", e)),
+    }
+
+    unsafe {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_CONTROL, MOD_SHIFT,
+        };
+        let probes: [(&str, HOT_KEY_MODIFIERS, u32); 3] = [
+            ("ctrl+shift+t", MOD_CONTROL | MOD_SHIFT, 0x54),
+            ("ctrl+shift+r", MOD_CONTROL | MOD_SHIFT, 0x52),
+            ("esc", HOT_KEY_MODIFIERS(0), 0x1B),
+        ];
+        for (name, mods, vk) in probes {
+            let free = RegisterHotKey(None, 990 + vk as i32, mods, vk).is_ok();
+            if free {
+                let _ = UnregisterHotKey(None, 990 + vk as i32);
+            }
+            out.push_str(&format!(
+                "hotkey {}: {}\n",
+                name,
+                if free { "free" } else { "TAKEN by another app" }
+            ));
+        }
+    }
+
+    println!("{}", out);
+    let path = exe_dir().join("tagfix-diag.txt");
+    match std::fs::write(&path, &out) {
+        Ok(()) => println!("written to {}", path.display()),
+        Err(e) => eprintln!("could not write {}: {}", path.display(), e),
+    }
+    0
+}
+
 fn main() {
+    install_panic_reporter();
     let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 2 && args[1] == "diag" {
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+            let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+        std::process::exit(run_diag());
+    }
     if args.len() >= 2 && args[1] == "sweep" {
         // The release binary is a GUI app; borrow the parent console so the
         // CLI output is visible.
@@ -567,6 +738,8 @@ fn main() {
             arm_ctx: Mutex::new(None),
             pending: Mutex::new(None),
             hotkey: Mutex::new(settings::load(&exe_dir()).hotkey),
+            arm_epoch: Mutex::new(0),
+            ready_epoch: Mutex::new(0),
         })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -616,7 +789,8 @@ fn main() {
             reorder_tags,
             export_sweep,
             get_settings,
-            save_settings
+            save_settings,
+            overlay_ready
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -633,17 +807,32 @@ fn main() {
 
             // Tray icon and menu.
             let arm_item = MenuItem::with_id(app, "arm", "Arm (Ctrl+Shift+T)", true, None::<&str>)?;
-            let review_item =
-                MenuItem::with_id(app, "review", "Review and export", true, None::<&str>)?;
+            let review_item = MenuItem::with_id(
+                app,
+                "review",
+                "Review and export (Ctrl+Shift+R)",
+                true,
+                None::<&str>,
+            )?;
             let sweeps_item =
                 MenuItem::with_id(app, "open-sweeps", "Open sweeps folder", true, None::<&str>)?;
             let settings_item =
                 MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let help_item =
+                MenuItem::with_id(app, "help", "How to use", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
-                &[&arm_item, &review_item, &sweeps_item, &settings_item, &quit_item],
+                &[&arm_item, &review_item, &sweeps_item, &settings_item, &help_item, &quit_item],
             )?;
+
+            // First launch: show the how-to window once.
+            let mut startup_settings = settings::load(&exe_dir());
+            if !startup_settings.help_shown {
+                open_help(&handle);
+                startup_settings.help_shown = true;
+                let _ = settings::save(&exe_dir(), &startup_settings);
+            }
 
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
@@ -655,6 +844,7 @@ fn main() {
                     "review" => open_review(app),
                     "open-sweeps" => open_sweeps_folder(),
                     "settings" => open_settings(app),
+                    "help" => open_help(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
