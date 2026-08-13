@@ -47,6 +47,23 @@ fn now_utc() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
+/// Debug-build trace log next to the exe; a no-op in release builds.
+fn dbg_log(msg: &str) {
+    #[cfg(debug_assertions)]
+    {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(exe_dir().join("tagfix-debug.log"))
+        {
+            let _ = writeln!(f, "{} {}", now_utc(), msg);
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = msg;
+}
+
 fn exe_dir() -> std::path::PathBuf {
     std::env::current_exe()
         .ok()
@@ -158,9 +175,11 @@ fn apply_armed(app: &AppHandle, armed: bool) {
     // a global shortcut that only exists while armed.
     let esc = Shortcut::new(None, Code::Escape);
     if armed {
-        let _ = app.global_shortcut().register(esc);
+        let r = app.global_shortcut().register(esc);
+        dbg_log(&format!("apply_armed(true): esc register {:?}", r));
     } else {
-        let _ = app.global_shortcut().unregister(esc);
+        let r = app.global_shortcut().unregister(esc);
+        dbg_log(&format!("apply_armed(false): esc unregister {:?}", r));
     }
 
     let _ = app.emit("armed-changed", armed);
@@ -548,6 +567,7 @@ fn main() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
+                    dbg_log(&format!("shortcut event: {:?} state {:?}", shortcut, event.state()));
                     if event.state() != ShortcutState::Pressed {
                         return;
                     }
@@ -558,6 +578,8 @@ fn main() {
                     };
                     if *shortcut == arm_hotkey {
                         toggle_armed(app);
+                    } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyR) {
+                        open_review(app);
                     } else if shortcut.matches(Modifiers::empty(), Code::Escape) {
                         // Esc is contextual: an open tag entry is cancelled,
                         // otherwise the overlay disarms.
@@ -600,6 +622,10 @@ fn main() {
             // armed state.
             let hotkey_raw = settings::load(&exe_dir()).hotkey;
             app.global_shortcut().register(parse_hotkey(&hotkey_raw))?;
+            // Ctrl+Shift+R opens review and export; the tool is keyboard
+            // first and some shells hide fresh tray icons.
+            app.global_shortcut()
+                .register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyR))?;
 
             // Tray icon and menu.
             let arm_item = MenuItem::with_id(app, "arm", "Arm (Ctrl+Shift+T)", true, None::<&str>)?;

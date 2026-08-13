@@ -160,7 +160,10 @@ function buildRow(tag) {
   controls.appendChild(dropBtn);
   li.appendChild(controls);
 
-  li.addEventListener("dragstart", () => {
+  li.addEventListener("dragstart", (ev) => {
+    // Chromium needs data set for the drag loop to actually start.
+    ev.dataTransfer.setData("text/plain", String(tag.number));
+    ev.dataTransfer.effectAllowed = "move";
     dragRow = li;
     li.classList.add("dragging");
   });

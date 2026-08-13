@@ -171,7 +171,9 @@ impl SweepStore {
 
     pub fn load_sweep(&self, dir_name: &str) -> io::Result<Sweep> {
         let raw = fs::read_to_string(self.sweep_json_path(dir_name))?;
-        serde_json::from_str(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        // Tolerate a UTF-8 BOM: hand-edited files often carry one.
+        let raw = raw.trim_start_matches('\u{feff}');
+        serde_json::from_str(raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     pub fn save_sweep(&self, dir_name: &str, sweep: &Sweep) -> io::Result<()> {
@@ -484,6 +486,20 @@ mod tests {
         let sweep = store.load_sweep(&name).unwrap();
         let numbers: Vec<u32> = sweep.tags.iter().map(|t| t.number).collect();
         assert_eq!(numbers, vec![2, 1, 3]);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn load_sweep_tolerates_utf8_bom() {
+        let store = SweepStore::new(tmp_root("bom"));
+        let (name, sweep) = store.create_sweep("s", "2026-08-13T10:00:00Z").unwrap();
+        let path = store.sweep_json_path(&name);
+        let json = serde_json::to_string(&sweep).unwrap();
+        let mut with_bom = vec![0xEF, 0xBB, 0xBF];
+        with_bom.extend_from_slice(json.as_bytes());
+        fs::write(&path, with_bom).unwrap();
+        let loaded = store.load_sweep(&name).unwrap();
+        assert_eq!(loaded, sweep);
         let _ = fs::remove_dir_all(store.root());
     }
 

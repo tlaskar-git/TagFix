@@ -44,9 +44,9 @@ Requires the WebView2 runtime, which ships with Windows 11.
    `Shift+Enter` inserts a newline. `Esc` cancels the tag without saving.
 5. `Esc` (outside tag entry) disarms. The overlay never intercepts clicks
    while disarmed.
-6. Tray menu, Review and export: reorder tags by drag, edit text, change
-   severity, drop tags (dropped tags stay in the sweep file and can be
-   picked back up).
+6. `Ctrl+Shift+R` (or tray menu, Review and export): reorder tags by drag,
+   edit text, change severity, drop tags (dropped tags stay in the sweep
+   file and can be picked back up).
 7. Press Export. Three files land in the sweep folder:
    - `fixlist.md`: the full evidence ledger, images by relative path
    - `fixlist.html`: single file, images inlined, opens anywhere offline
