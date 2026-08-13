@@ -8,6 +8,23 @@
 <body class="disarmed">
   <div id="armed-frame"></div>
   <div id="armed-badge">ARMED<span id="tag-counter"></span></div>
+  <div id="selection"></div>
+  <div id="popover">
+    <textarea id="tag-text" rows="3" placeholder="What is wrong here?"></textarea>
+    <div class="chip-row" id="severity-chips" data-value="medium">
+      <button class="chip" data-value="high">high</button>
+      <button class="chip selected" data-value="medium">medium</button>
+      <button class="chip" data-value="low">low</button>
+    </div>
+    <div class="chip-row" id="area-chips" data-value="other">
+      <button class="chip" data-value="layout">layout</button>
+      <button class="chip" data-value="copy">copy</button>
+      <button class="chip" data-value="a11y">a11y</button>
+      <button class="chip" data-value="behaviour">behaviour</button>
+      <button class="chip selected" data-value="other">other</button>
+    </div>
+    <div id="popover-hint">Enter saves, Shift+Enter newline, Esc cancels</div>
+  </div>
   <script src="main.js"></script>
 </body>
 </html>

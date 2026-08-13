@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TagFix settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <h1>Settings</h1>
+  <label>
+    Arm hotkey
+    <input id="hotkey" type="text" spellcheck="false"
+      placeholder="ctrl+shift+t">
+    <small>Modifiers joined with plus, for example ctrl+alt+f9</small>
+  </label>
+  <label>
+    Output directory
+    <input id="output-dir" type="text" spellcheck="false"
+      placeholder="blank = sweeps folder next to tagfix.exe">
+  </label>
+  <label class="check">
+    <input id="launch-login" type="checkbox">
+    Launch at login (current user only)
+  </label>
+  <div id="actions">
+    <button id="save-btn">Save</button>
+    <span id="status"></span>
+  </div>
+  <script src="settings.js"></script>
+</body>
+</html>
