@@ -21,8 +21,11 @@ TagFix is not an audio metadata repair tool. Different itch entirely.
 
 ## Install
 
-1. Grab `tagfix.exe` (portable, unsigned, x64). No installer, no admin
-   rights.
+1. Download
+   [tagfix.exe](https://github.com/tlaskar-git/TagFix/raw/main/dist/tagfix.exe)
+   (portable, unsigned, x64, about 9 MB). No installer, no admin rights.
+   Windows SmartScreen may warn because the exe is unsigned: More info,
+   Run anyway.
 2. Put it in any folder you can write to. Sweeps land in a `sweeps` folder
    next to the exe unless you point the output directory elsewhere in
    Settings.
