@@ -13,6 +13,20 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = "0.4"
+png = "0.17"
+base64 = "0.22"
+windows-capture = "1"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+    "Win32_System_Console",
+] }
+
+[lib]
+name = "tagfix"
+path = "src/lib.rs"
 
 [profile.release]
 strip = true
