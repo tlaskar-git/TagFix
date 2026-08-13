@@ -1,0 +1,127 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  font-family: "Segoe UI", sans-serif;
+}
+
+body.armed {
+  cursor: crosshair;
+}
+
+#armed-frame {
+  position: fixed;
+  inset: 0;
+  border: 3px solid #e5484d;
+  pointer-events: none;
+  display: none;
+}
+
+#armed-badge {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #e5484d;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 4px 14px;
+  border-radius: 999px;
+  pointer-events: none;
+  display: none;
+}
+
+body.armed #armed-frame,
+body.armed #armed-badge {
+  display: block;
+}
+
+#selection {
+  position: fixed;
+  display: none;
+  border: 1px solid #e5484d;
+  background: rgba(229, 72, 77, 0.12);
+  pointer-events: none;
+}
+
+/* During the actual pixel grab every bit of overlay chrome disappears. */
+body.capturing #armed-frame,
+body.capturing #armed-badge,
+body.capturing #selection,
+body.capturing #popover {
+  display: none !important;
+}
+
+#popover {
+  position: fixed;
+  display: none;
+  width: 320px;
+  background: #1c1c1f;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+}
+
+body.entry #popover {
+  display: block;
+}
+
+body.entry {
+  cursor: default;
+}
+
+#tag-text {
+  width: 100%;
+  box-sizing: border-box;
+  background: #2a2a2e;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  padding: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: none;
+}
+
+#tag-text:focus {
+  outline: 1px solid #e5484d;
+}
+
+.chip-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  background: #2a2a2e;
+  color: #b8b8bd;
+  border: 1px solid #3a3a3f;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip.selected {
+  background: #e5484d;
+  border-color: #e5484d;
+  color: #fff;
+}
+
+#popover-hint {
+  margin-top: 8px;
+  color: #8b8b90;
+  font-size: 11px;
+}

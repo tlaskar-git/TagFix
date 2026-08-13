@@ -1,0 +1,139 @@
+body {
+  margin: 0;
+  padding: 0 20px 40px;
+  background: #17171a;
+  color: #ececee;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 14px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+select,
+button {
+  background: #2a2a2e;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+#export-btn {
+  background: #e5484d;
+  border-color: #e5484d;
+  cursor: pointer;
+}
+
+#status {
+  color: #8b8b90;
+  font-size: 12px;
+}
+
+#hint {
+  color: #8b8b90;
+  font-size: 12px;
+}
+
+#tag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 900px;
+}
+
+.tag-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #1f1f23;
+  border: 1px solid #303036;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.tag-row.dragging {
+  opacity: 0.4;
+}
+
+.tag-row.dropped-row {
+  opacity: 0.45;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #6b6b70;
+  user-select: none;
+  padding-top: 2px;
+}
+
+.tag-number {
+  color: #8b8b90;
+  min-width: 52px;
+}
+
+.tag-body {
+  flex: 1;
+}
+
+.tag-text {
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+.tag-text.empty {
+  color: #6b6b70;
+  font-style: italic;
+}
+
+.tag-body textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #2a2a2e;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px;
+}
+
+.tag-meta {
+  color: #8b8b90;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.row-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.row-controls select {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.drop-btn {
+  cursor: pointer;
+  font-size: 12px;
+}
