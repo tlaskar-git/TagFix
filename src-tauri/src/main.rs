@@ -163,11 +163,15 @@ fn apply_armed(app: &AppHandle, armed: bool) {
     }
 
     if let Some(win) = app.get_webview_window("overlay") {
-        // Disarmed: the overlay must not intercept any clicks.
+        // The overlay window only exists on screen while armed. Disarmed it
+        // is fully hidden, so it can never block or obscure the desktop,
+        // even on machines where window transparency fails.
         let _ = win.set_ignore_cursor_events(!armed);
         if armed {
             let _ = win.show();
             let _ = win.set_focus();
+        } else {
+            let _ = win.hide();
         }
     }
 
@@ -487,7 +491,7 @@ fn build_overlay(app: &AppHandle) -> tauri::Result<()> {
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
-        .visible(true)
+        .visible(false)
         .focused(false)
         .build()?;
 
