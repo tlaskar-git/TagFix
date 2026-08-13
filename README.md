@@ -34,7 +34,9 @@ TagFix is not an audio metadata repair tool. Different itch entirely.
    the visible tray, or enable it under Settings, Personalization, Taskbar,
    Other system tray icons.
 
-Requires the WebView2 runtime, which ships with Windows 11.
+The exe is fully self contained: the C runtime is statically linked, so no
+VC++ redistributable or any other install is needed. The only external
+dependency is the WebView2 runtime, which is part of Windows 11 itself.
 
 ## Usage
 
