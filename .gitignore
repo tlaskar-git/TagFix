@@ -3,3 +3,4 @@ node_modules
 *.log
 tagfix-diag.txt
 tagfix-error.log
+tagfix-startup.log

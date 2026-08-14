@@ -51,9 +51,32 @@ fn now_utc() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
-/// Set once setup completes; the launch guard exits the process with an
-/// explanation if this never happens.
-static SETUP_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Set once startup is fully finished; the launch guard exits the process
+/// with an explanation if progress ever stalls before that.
+static STARTUP_COMPLETE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Last startup phase reached, with when it was reached.
+static LAST_PHASE: std::sync::OnceLock<Mutex<(String, std::time::Instant)>> =
+    std::sync::OnceLock::new();
+
+/// Record a startup phase: timestamped line in tagfix-startup.log next to
+/// the exe, plus the stall detector's reference point. The log is rewritten
+/// on every run so it always describes the latest launch.
+fn checkpoint(name: &str) {
+    use std::io::Write;
+    let lock = LAST_PHASE.get_or_init(|| {
+        Mutex::new((String::new(), std::time::Instant::now()))
+    });
+    *lock.lock().unwrap() = (name.to_string(), std::time::Instant::now());
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(exe_dir().join("tagfix-startup.log"))
+    {
+        let _ = writeln!(f, "{} {}", now_utc(), name);
+    }
+}
 
 fn read_reg_value(key: &str, value: &str) -> String {
     std::process::Command::new("reg")
@@ -97,21 +120,37 @@ fn preflight_webview2() {
     }
 }
 
-/// If initialization wedges (typically WebView2 refusing to come up),
-/// exit with an explanation instead of sitting as a ghost window.
+/// If any startup phase stalls (typically WebView2 refusing to come up),
+/// exit with an explanation instead of sitting as a ghost window. Watches
+/// until STARTUP_COMPLETE, so late phases are covered too.
 fn launch_guard() {
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_secs(20));
-        if !SETUP_DONE.load(std::sync::atomic::Ordering::SeqCst) {
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        if STARTUP_COMPLETE.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let (phase, since) = {
+            let lock = LAST_PHASE.get_or_init(|| {
+                Mutex::new((String::from("main"), std::time::Instant::now()))
+            });
+            let g = lock.lock().unwrap();
+            (g.0.clone(), g.1.elapsed())
+        };
+        if since.as_secs() >= 25 {
             let msg = format!(
-                "{} TagFix failed to finish starting within 20 seconds; webview2 detected: '{}'",
+                "{} startup stalled at phase '{}' for {}s; webview2 detected: '{}'",
                 now_utc(),
+                phase,
+                since.as_secs(),
                 webview2_version()
             );
             let _ = std::fs::write(exe_dir().join("tagfix-error.log"), &msg);
             message_box(
                 "TagFix could not start",
-                "TagFix did not finish starting within 20 seconds and shut itself down.\n\nThis usually means the WebView2 runtime on this machine is missing, broken, or blocked by security software.\n\nRun tagfix diag from a terminal and send tagfix-diag.txt together with tagfix-error.log.",
+                &format!(
+                    "TagFix stalled while starting (phase: {}) and shut itself down.\n\nThis usually means the WebView2 runtime is blocked or broken on this machine.\n\nSend tagfix-error.log and tagfix-startup.log from the folder next to tagfix.exe.",
+                    phase
+                ),
             );
             std::process::exit(1);
         }
@@ -631,6 +670,7 @@ fn open_sweeps_folder() {
 }
 
 fn build_overlay(app: &AppHandle) -> tauri::Result<()> {
+    checkpoint("overlay webview creating");
     let win = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("index.html".into()))
         .title("TagFix overlay")
         .transparent(true)
@@ -648,6 +688,7 @@ fn build_overlay(app: &AppHandle) -> tauri::Result<()> {
     }
     // Start disarmed: click-through.
     let _ = win.set_ignore_cursor_events(true);
+    checkpoint("overlay webview created");
     Ok(())
 }
 
@@ -809,8 +850,11 @@ fn main() {
         std::process::exit(run_sweep_cli(&args[2..]));
     }
 
+    let _ = std::fs::remove_file(exe_dir().join("tagfix-startup.log"));
+    checkpoint("main start");
     preflight_webview2();
     launch_guard();
+    checkpoint("building tauri app");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
@@ -882,6 +926,7 @@ fn main() {
             overlay_ready
         ])
         .setup(|app| {
+            checkpoint("setup entered");
             let handle = app.handle().clone();
             build_overlay(&handle)?;
 
@@ -921,6 +966,7 @@ fn main() {
                 // Own thread: a modal box must not stall setup.
                 std::thread::spawn(move || message_box("TagFix hotkey conflict", &text));
             }
+            checkpoint("hotkeys registered");
 
             // Tray icon and menu.
             let arm_item = MenuItem::with_id(app, "arm", "Arm (Ctrl+Shift+T)", true, None::<&str>)?;
@@ -943,6 +989,7 @@ fn main() {
                 &[&arm_item, &review_item, &sweeps_item, &settings_item, &help_item, &quit_item],
             )?;
 
+            checkpoint("tray building");
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("TagFix")
@@ -958,23 +1005,26 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+            checkpoint("tray built");
 
-            SETUP_DONE.store(true, std::sync::atomic::Ordering::SeqCst);
-
-            // First launch: show the how-to window once, off the setup
-            // path so a second webview never contends with the overlay
-            // still initializing.
+            // First launch: a NATIVE summary box, deliberately not a
+            // webview, so machines where webview creation misbehaves still
+            // get told how the tool works. The rich guide stays in the
+            // tray menu (How to use).
             let mut startup_settings = settings::load(&exe_dir());
             if !startup_settings.help_shown {
                 startup_settings.help_shown = true;
                 let _ = settings::save(&exe_dir(), &startup_settings);
-                let delayed = handle.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(1500));
-                    let inner = delayed.clone();
-                    let _ = delayed.run_on_main_thread(move || open_help(&inner));
+                std::thread::spawn(|| {
+                    message_box(
+                        "Welcome to TagFix",
+                        "Tag what is wrong on screen, get a fix list out.\n\nCtrl+Shift+T arms the overlay: drag a box around a problem, type what is wrong, press Enter, tag the next thing. Esc cancels or disarms.\n\nCtrl+Shift+R opens review and export.\n\nFull guide: tray icon, How to use.",
+                    );
                 });
             }
+
+            STARTUP_COMPLETE.store(true, std::sync::atomic::Ordering::SeqCst);
+            checkpoint("startup complete");
 
             Ok(())
         })
