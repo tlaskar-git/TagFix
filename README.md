@@ -11,7 +11,17 @@ your disk.
 
 TagFix is not an audio metadata repair tool. Different itch entirely.
 
-![TagFix armed overlay with a tag entry popover](docs/screenshot-armed.png)
+**Tagging:** arm, drag a box around the problem, describe it, pick severity
+and area, press Enter. The badge tracks your place in the sweep.
+
+![Armed TagFix overlay: a region of a File Explorer window has been
+captured and the tag entry popover is open with severity high and area
+layout selected](docs/screenshot-tagging.png)
+
+**Review and export:** reorder, edit, drop, then export the fix list.
+
+![TagFix review window listing three captured tags with severity and area
+controls and an Export fix list button](docs/screenshot-review.png)
 
 ## Vocabulary
 
