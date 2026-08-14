@@ -388,8 +388,14 @@ fn apply_armed(app: &AppHandle, armed: bool) {
 fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end: (i32, i32)) {
     let selection = capture::Selection::from_drag(start, end);
     if selection.too_small() {
-        rt_log("selection: too small, ignored");
-        let _ = app.emit("selection-cancel", ());
+        rt_log(&format!(
+            "selection: too small ({}x{}), ignored",
+            selection.width, selection.height
+        ));
+        let _ = app.emit(
+            "selection-cancel",
+            serde_json::json!({ "reason": "selection too small, drag a larger box" }),
+        );
         return;
     }
     let origin = (ctx.monitor_x, ctx.monitor_y);
@@ -403,7 +409,10 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
         Ok(v) => v,
         Err(e) => {
             rt_log(&format!("selection: sweep open failed: {}", e));
-            let _ = app.emit("selection-cancel", ());
+            let _ = app.emit(
+                "selection-cancel",
+                serde_json::json!({ "reason": "could not open the sweep folder" }),
+            );
             return;
         }
     };
@@ -429,7 +438,10 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
         Ok(m) => m,
         Err(e) => {
             rt_log(&format!("capture: FAILED: {}", e));
-            let _ = app.emit("selection-cancel", ());
+            let _ = app.emit(
+                "selection-cancel",
+                serde_json::json!({ "reason": "capture failed, see tagfix-runtime.log" }),
+            );
             return;
         }
     };

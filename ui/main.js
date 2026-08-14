@@ -171,9 +171,17 @@ listen("selection-hide", () => {
   hideSelection();
 });
 
-listen("selection-cancel", () => {
+listen("selection-cancel", (event) => {
   document.body.classList.remove("capturing");
   hideSelection();
+  // Never fail silently: say why nothing was captured, then go back to
+  // the normal standby text.
+  const why =
+    event.payload && event.payload.reason
+      ? event.payload.reason
+      : "nothing captured";
+  counterEl.textContent = " " + why;
+  setTimeout(refreshCounter, 2500);
 });
 
 listen("entry-open", (event) => {
