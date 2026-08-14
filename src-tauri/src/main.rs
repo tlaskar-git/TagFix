@@ -485,6 +485,9 @@ fn spawn_hook_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<hook::HookEve
         let mut ctx: Option<ArmContext> = None;
         let mut start = (0, 0);
         let mut last_emit = std::time::Instant::now();
+        let mut last_ignored = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(10))
+            .unwrap_or_else(std::time::Instant::now);
         for event in rx {
             match event {
                 hook::HookEvent::Start(x, y) => {
@@ -513,8 +516,21 @@ fn spawn_hook_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<hook::HookEve
                 }
                 hook::HookEvent::End(x, y) => {
                     rt_log(&format!("selection: end at {},{}", x, y));
+                    let _ = app.emit("one-shot", false);
                     if let Some(c) = ctx.take() {
                         handle_selection_end(&app, c, start, (x, y));
+                    }
+                }
+                hook::HookEvent::Ignored { ctrl, shift } => {
+                    // Rate limited: one line per second is enough to tell
+                    // whether clicks reach the hook and what the keyboard
+                    // state looked like.
+                    if last_ignored.elapsed() > std::time::Duration::from_secs(1) {
+                        last_ignored = std::time::Instant::now();
+                        rt_log(&format!(
+                            "click seen while armed but not a capture gesture (ctrl={}, shift={})",
+                            ctrl, shift
+                        ));
                     }
                 }
             }
@@ -983,6 +999,19 @@ fn main() {
                         toggle_armed(app);
                     } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyR) {
                         open_review(app);
+                    } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS) {
+                        // Trackpad friendly: no chording needed, the next
+                        // plain left drag marks the region.
+                        let armed = {
+                            let state = app.state::<AppState>();
+                            let v = *state.armed.lock().unwrap();
+                            v
+                        };
+                        if armed {
+                            hook::arm_one_shot();
+                            rt_log("one shot: next drag marks a region");
+                            let _ = app.emit("one-shot", true);
+                        }
                     }
                 })
                 .build(),
@@ -1035,6 +1064,20 @@ fn main() {
             {
                 hotkey_problems.push(
                     "The review hotkey (ctrl+shift+r) is taken by another program. Use the tray menu, Review and export.".to_string(),
+                );
+            }
+            // Ctrl+Shift+S: mark the next drag. On a trackpad, holding
+            // modifiers through a click is awkward, so this needs none.
+            if app
+                .global_shortcut()
+                .register(Shortcut::new(
+                    Some(Modifiers::CONTROL | Modifiers::SHIFT),
+                    Code::KeyS,
+                ))
+                .is_err()
+            {
+                hotkey_problems.push(
+                    "The mark-next-region hotkey (ctrl+shift+s) is taken by another program. Ctrl+Shift+drag still works.".to_string(),
                 );
             }
             if !hotkey_problems.is_empty() {

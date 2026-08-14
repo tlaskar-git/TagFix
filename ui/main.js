@@ -150,6 +150,11 @@ listen("armed-changed", (event) => {
   renderArmed(Boolean(event.payload));
 });
 
+// One-shot mode: the next plain drag marks a region, no chording needed.
+listen("one-shot", (event) => {
+  document.body.classList.toggle("one-shot", Boolean(event.payload));
+});
+
 listen("selection-start", () => {
   hideSelection();
 });

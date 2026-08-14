@@ -43,6 +43,28 @@ body.armed #armed-badge {
   display: block;
 }
 
+.badge-oneshot {
+  display: none;
+}
+
+body.one-shot .badge-standby {
+  display: none;
+}
+
+body.one-shot .badge-oneshot {
+  display: inline;
+}
+
+/* One-shot is a deliberate, momentary mode: make it obvious. */
+body.one-shot #armed-badge {
+  background: #e5484d;
+  box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.35);
+}
+
+body.one-shot #armed-frame {
+  border-color: #e5484d;
+}
+
 #selection {
   position: fixed;
   display: none;
