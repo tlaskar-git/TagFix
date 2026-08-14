@@ -56,6 +56,9 @@ dependency is the WebView2 runtime, which is part of Windows 11 itself.
    normal. TagFix takes no clicks and no keys while it waits.
 2. When something looks wrong, hold `Ctrl+Shift` and drag a box around it
    with the left mouse button. On release, a popover opens.
+   On a laptop trackpad, where holding two keys through a click is
+   awkward, press `Ctrl+Shift+S` instead: the badge changes to DRAG NOW
+   and your next ordinary drag marks the region.
 3. Type what is wrong. Pick severity (high, medium, low) and area (layout,
    copy, a11y, behaviour, other) or keep the defaults.
 4. `Enter` saves the tag and hands the screen straight back to you, still

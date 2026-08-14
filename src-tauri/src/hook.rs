@@ -19,23 +19,44 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum HookEvent {
-    /// Ctrl+Shift+LeftDown at a screen point.
+    /// Left button went down to begin a region.
     Start(i32, i32),
     /// Drag in progress.
     Update(i32, i32),
     /// Button released; selection finished.
     End(i32, i32),
+    /// A left click arrived while armed but did not start a region.
+    /// Carries the modifier state so the log can explain why.
+    Ignored { ctrl: bool, shift: bool },
 }
 
 static SENDER: Mutex<Option<Sender<HookEvent>>> = Mutex::new(None);
 static ARMED: AtomicBool = AtomicBool::new(false);
 static SELECTING: AtomicBool = AtomicBool::new(false);
+/// Set by the "mark next region" hotkey: the next left drag counts as the
+/// gesture with no modifiers held, which matters on a trackpad where
+/// chording is awkward.
+static ONE_SHOT: AtomicBool = AtomicBool::new(false);
 static HOOK_HANDLE: AtomicIsize = AtomicIsize::new(0);
 
 pub fn set_armed(armed: bool) {
     ARMED.store(armed, Ordering::SeqCst);
     if !armed {
         SELECTING.store(false, Ordering::SeqCst);
+        ONE_SHOT.store(false, Ordering::SeqCst);
+    }
+}
+
+pub fn arm_one_shot() {
+    ONE_SHOT.store(true, Ordering::SeqCst);
+}
+
+
+fn modifier_state() -> (bool, bool) {
+    unsafe {
+        let ctrl = GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000 != 0;
+        let shift = GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000 != 0;
+        (ctrl, shift)
     }
 }
 
@@ -49,11 +70,8 @@ fn modifiers_held() -> bool {
             return true;
         }
     }
-    unsafe {
-        let ctrl = GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000 != 0;
-        let shift = GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000 != 0;
-        ctrl && shift
-    }
+    let (ctrl, shift) = modifier_state();
+    ctrl && shift
 }
 
 fn post(event: HookEvent) {
@@ -70,12 +88,21 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
         let (x, y) = (info.pt.x, info.pt.y);
         match wparam.0 as u32 {
             WM_LBUTTONDOWN => {
-                if modifiers_held() && !SELECTING.load(Ordering::SeqCst) {
-                    SELECTING.store(true, Ordering::SeqCst);
-                    post(HookEvent::Start(x, y));
-                    // Swallow it: this click marks a region, it must not
-                    // reach the app underneath.
-                    return LRESULT(1);
+                if !SELECTING.load(Ordering::SeqCst) {
+                    // Either the chord, or a one-shot armed by the
+                    // "mark next region" hotkey.
+                    if modifiers_held() || ONE_SHOT.load(Ordering::SeqCst) {
+                        SELECTING.store(true, Ordering::SeqCst);
+                        post(HookEvent::Start(x, y));
+                        // Swallow it: this click marks a region, it must
+                        // not reach the app underneath.
+                        return LRESULT(1);
+                    }
+                    // Not the gesture: let it through, but record why so
+                    // a trackpad that never reports the modifiers is
+                    // visible in the log.
+                    let (ctrl, shift) = modifier_state();
+                    post(HookEvent::Ignored { ctrl, shift });
                 }
             }
             WM_MOUSEMOVE => {
@@ -87,6 +114,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             WM_LBUTTONUP => {
                 if SELECTING.load(Ordering::SeqCst) {
                     SELECTING.store(false, Ordering::SeqCst);
+                    ONE_SHOT.store(false, Ordering::SeqCst);
                     post(HookEvent::End(x, y));
                     return LRESULT(1);
                 }

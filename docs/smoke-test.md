@@ -25,6 +25,13 @@ phases are delivered.
 2. Hold `Ctrl+Shift` and drag a box over a window. Expect: red selection
    rectangle follows the drag, and the app underneath does not receive
    the click.
+2b. Trackpad path: press `Ctrl+Shift+S`. Expect: the badge changes to
+   DRAG NOW. Drag with no keys held. Expect: the same selection
+   behaviour, and the mode ends after that one drag.
+2c. If a click never starts a selection, check tagfix-runtime.log for
+   "click seen while armed but not a capture gesture (ctrl=..,
+   shift=..)". That line proves the hook sees the click and shows what
+   the keyboard state looked like at that moment.
 3. Release. Expect: a popover opens; a `tag-NN.png` appears in the active
    sweep folder containing exactly the dragged region, with no TagFix
    chrome (no red frame, badge, or selection box) in the pixels.
