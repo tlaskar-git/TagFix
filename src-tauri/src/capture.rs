@@ -21,12 +21,69 @@ use windows_capture::settings::{
 };
 
 /// Physical-pixel region relative to the monitor's top left corner.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MonitorRegion {
     pub x: u32,
     pub y: u32,
     pub width: u32,
     pub height: u32,
+}
+
+/// A drag, normalized: top left plus size, in screen coordinates. The
+/// mouse hook reports screen points, so all selection maths starts here.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Selection {
+    pub screen_x: i32,
+    pub screen_y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// A rectangle in overlay CSS pixels, for drawing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CssRect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl Selection {
+    /// Build from two drag points in any order.
+    pub fn from_drag(start: (i32, i32), end: (i32, i32)) -> Self {
+        Selection {
+            screen_x: start.0.min(end.0),
+            screen_y: start.1.min(end.1),
+            width: (end.0 - start.0).unsigned_abs(),
+            height: (end.1 - start.1).unsigned_abs(),
+        }
+    }
+
+    /// A stray click rather than a deliberate region.
+    pub fn too_small(&self) -> bool {
+        self.width < 4 || self.height < 4
+    }
+
+    /// Physical region relative to the monitor holding the selection.
+    pub fn region_on(&self, monitor_origin: (i32, i32)) -> MonitorRegion {
+        MonitorRegion {
+            x: (self.screen_x - monitor_origin.0).max(0) as u32,
+            y: (self.screen_y - monitor_origin.1).max(0) as u32,
+            width: self.width,
+            height: self.height,
+        }
+    }
+
+    /// Where the overlay should draw the rectangle, in CSS pixels.
+    pub fn css_rect(&self, monitor_origin: (i32, i32), scale: f64) -> CssRect {
+        let s = if scale <= 0.0 { 1.0 } else { scale };
+        CssRect {
+            x: (self.screen_x - monitor_origin.0) as f64 / s,
+            y: (self.screen_y - monitor_origin.1) as f64 / s,
+            w: self.width as f64 / s,
+            h: self.height as f64 / s,
+        }
+    }
 }
 
 pub struct ForegroundInfo {
@@ -133,6 +190,73 @@ impl GraphicsCaptureApiHandler for ShotHandler {
     fn on_closed(&mut self) -> Result<(), Self::Error> {
         let _ = self.flags.done.send(Err("capture session closed early".into()));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drag_normalizes_direction() {
+        let a = Selection::from_drag((100, 200), (300, 500));
+        let b = Selection::from_drag((300, 500), (100, 200));
+        assert_eq!(a, b);
+        assert_eq!(a.screen_x, 100);
+        assert_eq!(a.screen_y, 200);
+        assert_eq!(a.width, 200);
+        assert_eq!(a.height, 300);
+    }
+
+    #[test]
+    fn drag_handles_negative_screen_coordinates() {
+        // A monitor left of the primary has negative x.
+        let s = Selection::from_drag((-1800, 100), (-1500, 400));
+        assert_eq!(s.screen_x, -1800);
+        assert_eq!(s.width, 300);
+        assert_eq!(s.height, 300);
+    }
+
+    #[test]
+    fn tiny_drags_are_rejected() {
+        assert!(Selection::from_drag((10, 10), (12, 40)).too_small());
+        assert!(Selection::from_drag((10, 10), (40, 12)).too_small());
+        assert!(!Selection::from_drag((10, 10), (40, 40)).too_small());
+    }
+
+    #[test]
+    fn region_is_relative_to_its_monitor() {
+        let s = Selection::from_drag((2596, 300), (2896, 600));
+        let r = s.region_on((2496, 0));
+        assert_eq!(
+            r,
+            MonitorRegion { x: 100, y: 300, width: 300, height: 300 }
+        );
+    }
+
+    #[test]
+    fn region_clamps_when_selection_starts_off_monitor() {
+        let s = Selection::from_drag((-20, -30), (100, 100));
+        let r = s.region_on((0, 0));
+        assert_eq!(r.x, 0);
+        assert_eq!(r.y, 0);
+    }
+
+    #[test]
+    fn css_rect_divides_by_scale() {
+        let s = Selection::from_drag((100, 200), (400, 500));
+        let c = s.css_rect((0, 0), 1.5);
+        assert_eq!(c.x, 100.0 / 1.5);
+        assert_eq!(c.y, 200.0 / 1.5);
+        assert_eq!(c.w, 200.0);
+        assert_eq!(c.h, 200.0);
+    }
+
+    #[test]
+    fn css_rect_survives_a_bad_scale() {
+        let s = Selection::from_drag((10, 10), (110, 110));
+        let c = s.css_rect((0, 0), 0.0);
+        assert_eq!(c.w, 100.0);
     }
 }
 
