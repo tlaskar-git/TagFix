@@ -69,6 +69,10 @@ tagfix diag                machine report (WebView2, monitors, hotkeys),
 
 ## If something misbehaves
 
+TagFix is single instance: launching it again just tells you it is
+already running. If another program owns the arm hotkey, TagFix starts
+anyway, warns you, and you can pick a different combination in Settings.
+
 On first launch TagFix opens a How to use window with every hotkey and the
 full flow; reopen it any time from the tray menu. If arming ever fails to
 draw the overlay, TagFix disarms itself within six seconds and says so

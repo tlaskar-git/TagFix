@@ -745,15 +745,35 @@ fn run_diag() -> i32 {
             ("ctrl+shift+r", MOD_CONTROL | MOD_SHIFT, 0x52),
             ("esc", HOT_KEY_MODIFIERS(0), 0x1B),
         ];
+        let tagfix_running = {
+            let me = std::process::id();
+            std::process::Command::new("tasklist")
+                .args(["/FI", "IMAGENAME eq tagfix.exe", "/FO", "CSV", "/NH"])
+                .output()
+                .ok()
+                .map(|o| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .lines()
+                        .filter(|l| l.contains("tagfix.exe") && !l.contains(&format!("\"{}\"", me)))
+                        .count()
+                })
+                .unwrap_or(0)
+        };
+        out.push_str(&format!("other tagfix instances running: {}\n", tagfix_running));
         for (name, mods, vk) in probes {
             let free = RegisterHotKey(None, 990 + vk as i32, mods, vk).is_ok();
             if free {
                 let _ = UnregisterHotKey(None, 990 + vk as i32);
             }
             out.push_str(&format!(
-                "hotkey {}: {}\n",
+                "hotkey {}: {}{}\n",
                 name,
-                if free { "free" } else { "TAKEN by another app" }
+                if free { "free" } else { "TAKEN by another app" },
+                if !free && tagfix_running > 0 {
+                    " (a running TagFix owns its own hotkeys; close it and rerun diag to test)"
+                } else {
+                    ""
+                }
             ));
         }
     }
@@ -793,6 +813,15 @@ fn main() {
     launch_guard();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
+            // A second launch lands here in the first instance's process.
+            std::thread::spawn(|| {
+                message_box(
+                    "TagFix is already running",
+                    "TagFix is already running in the tray.\n\nCtrl+Shift+T arms it, Ctrl+Shift+R opens review and export.",
+                );
+            });
+        }))
         .manage(AppState {
             armed: Mutex::new(false),
             arm_ctx: Mutex::new(None),
@@ -856,14 +885,42 @@ fn main() {
             let handle = app.handle().clone();
             build_overlay(&handle)?;
 
-            // Global hotkey from settings (default Ctrl+Shift+T) toggles
-            // armed state.
+            // Global hotkeys. Registration failure means some other program
+            // owns the combination; that must never kill startup, only warn.
+            let mut hotkey_problems: Vec<String> = Vec::new();
             let hotkey_raw = settings::load(&exe_dir()).hotkey;
-            app.global_shortcut().register(parse_hotkey(&hotkey_raw))?;
+            if app
+                .global_shortcut()
+                .register(parse_hotkey(&hotkey_raw))
+                .is_err()
+            {
+                hotkey_problems.push(format!(
+                    "The arm hotkey ({}) is taken by another program, so arming from the keyboard will not work. Set a different hotkey in Settings (tray icon, Settings).",
+                    hotkey_raw
+                ));
+            }
             // Ctrl+Shift+R opens review and export; the tool is keyboard
             // first and some shells hide fresh tray icons.
-            app.global_shortcut()
-                .register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyR))?;
+            if app
+                .global_shortcut()
+                .register(Shortcut::new(
+                    Some(Modifiers::CONTROL | Modifiers::SHIFT),
+                    Code::KeyR,
+                ))
+                .is_err()
+            {
+                hotkey_problems.push(
+                    "The review hotkey (ctrl+shift+r) is taken by another program. Use the tray menu, Review and export.".to_string(),
+                );
+            }
+            if !hotkey_problems.is_empty() {
+                let text = format!(
+                    "TagFix started, but:\n\n{}",
+                    hotkey_problems.join("\n\n")
+                );
+                // Own thread: a modal box must not stall setup.
+                std::thread::spawn(move || message_box("TagFix hotkey conflict", &text));
+            }
 
             // Tray icon and menu.
             let arm_item = MenuItem::with_id(app, "arm", "Arm (Ctrl+Shift+T)", true, None::<&str>)?;
