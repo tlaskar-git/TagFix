@@ -386,23 +386,16 @@ fn apply_armed(app: &AppHandle, armed: bool) {
 /// Drive one selection through to a captured, pending tag. Runs on the
 /// hook worker thread, never on the hook callback itself.
 fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end: (i32, i32)) {
-    let x0 = start.0.min(end.0);
-    let y0 = start.1.min(end.1);
-    let w = (end.0 - start.0).abs();
-    let h = (end.1 - start.1).abs();
-    if w < 4 || h < 4 {
+    let selection = capture::Selection::from_drag(start, end);
+    if selection.too_small() {
         rt_log("selection: too small, ignored");
         let _ = app.emit("selection-cancel", ());
         return;
     }
-
-    // Region relative to the monitor, in physical pixels.
-    let region = capture::MonitorRegion {
-        x: (x0 - ctx.monitor_x).max(0) as u32,
-        y: (y0 - ctx.monitor_y).max(0) as u32,
-        width: w as u32,
-        height: h as u32,
-    };
+    let origin = (ctx.monitor_x, ctx.monitor_y);
+    let region = selection.region_on(origin);
+    let (x0, y0) = (selection.screen_x, selection.screen_y);
+    let (w, h) = (selection.width, selection.height);
 
     let ts = now_utc();
     let store = SweepStore::new(sweeps_dir());
@@ -451,8 +444,8 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
         region: store::Rect {
             x: x0,
             y: y0,
-            width: w as u32,
-            height: h as u32,
+            width: w,
+            height: h,
         },
         window_title: ctx.window_title.clone(),
         process_name: ctx.process_name.clone(),
@@ -472,12 +465,12 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
 
     // Entry mode: the overlay takes clicks and keys just long enough for
     // the operator to describe the tag.
-    let scale = ctx.dpi_scale.max(0.1);
+    let r = selection.css_rect(origin, ctx.dpi_scale);
     let css = serde_json::json!({
-        "x": (x0 - ctx.monitor_x) as f64 / scale,
-        "y": (y0 - ctx.monitor_y) as f64 / scale,
-        "w": w as f64 / scale,
-        "h": h as f64 / scale,
+        "x": r.x,
+        "y": r.y,
+        "w": r.w,
+        "h": r.h,
         "tagNumber": number,
         "sweepName": sweep_name,
     });
@@ -511,12 +504,10 @@ fn spawn_hook_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<hook::HookEve
                         continue;
                     }
                     last_emit = std::time::Instant::now();
-                    let scale = c.dpi_scale.max(0.1);
+                    let r = capture::Selection::from_drag(start, (x, y))
+                        .css_rect((c.monitor_x, c.monitor_y), c.dpi_scale);
                     let rect = serde_json::json!({
-                        "x": (start.0.min(x) - c.monitor_x) as f64 / scale,
-                        "y": (start.1.min(y) - c.monitor_y) as f64 / scale,
-                        "w": (x - start.0).abs() as f64 / scale,
-                        "h": (y - start.1).abs() as f64 / scale,
+                        "x": r.x, "y": r.y, "w": r.w, "h": r.h,
                     });
                     let _ = app.emit("selection-update", rect);
                 }
