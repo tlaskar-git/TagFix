@@ -93,7 +93,15 @@ rather than hanging. On Windows 10, or any machine where TagFix reports
 WebView2 missing, install the WebView2 Evergreen runtime from
 https://developer.microsoft.com/microsoft-edge/webview2 first. Fatal
 errors are written to tagfix-error.log next to the exe. When reporting a
-problem, run `tagfix diag` and include tagfix-diag.txt.
+problem, run `tagfix diag` and include tagfix-diag.txt, plus
+tagfix-startup.log and tagfix-runtime.log if they exist. Those two trace
+startup and the arm/capture path step by step, so a hang names the step
+it happened in.
+
+Screen capture uses Windows Graphics Capture. If that stalls or errors on
+a machine, TagFix falls back to a GDI BitBlt grab automatically, which
+loses hardware accelerated window content but works everywhere. The
+runtime log records which method produced each PNG.
 
 ## Data layout
 

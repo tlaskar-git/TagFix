@@ -1,9 +1,9 @@
 // TagFix: tag what is wrong on screen, get a fix list out.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod capture;
-
 use std::sync::Mutex;
+
+use tagfix::capture;
 
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -188,6 +188,19 @@ fn install_panic_reporter() {
     }));
 }
 
+/// Runtime trace log next to the exe, active in all builds. Arm and
+/// capture write here so a hang in the field names its own step.
+fn rt_log(msg: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(exe_dir().join("tagfix-runtime.log"))
+    {
+        let _ = writeln!(f, "{} {}", now_utc(), msg);
+    }
+}
+
 /// Debug-build trace log next to the exe; a no-op in release builds.
 fn dbg_log(msg: &str) {
     #[cfg(debug_assertions)]
@@ -254,6 +267,7 @@ fn apply_launch_at_login(enable: bool) {
 /// remember that monitor plus the foreground app for capture metadata.
 fn prepare_arm_context(app: &AppHandle) -> Option<ArmContext> {
     let win = app.get_webview_window("overlay")?;
+    rt_log("arm: reading cursor and monitors");
     let cursor = app.cursor_position().ok();
     let monitors = win.available_monitors().ok()?;
 
@@ -276,8 +290,10 @@ fn prepare_arm_context(app: &AppHandle) -> Option<ArmContext> {
     };
 
     // Grab the foreground app BEFORE the overlay takes focus.
+    rt_log("arm: reading foreground window");
     let fg = capture::foreground_info();
 
+    rt_log("arm: positioning overlay on monitor");
     let _ = win.set_position(monitor.position().clone());
     let _ = win.set_size(monitor.size().clone());
 
@@ -295,6 +311,7 @@ fn prepare_arm_context(app: &AppHandle) -> Option<ArmContext> {
 }
 
 fn apply_armed(app: &AppHandle, armed: bool) {
+    rt_log(&format!("apply_armed({}) enter", armed));
     let state: State<AppState> = app.state();
     *state.armed.lock().unwrap() = armed;
 
@@ -307,13 +324,17 @@ fn apply_armed(app: &AppHandle, armed: bool) {
         // The overlay window only exists on screen while armed. Disarmed it
         // is fully hidden, so it can never block or obscure the desktop,
         // even on machines where window transparency fails.
+        rt_log("apply_armed: setting cursor events");
         let _ = win.set_ignore_cursor_events(!armed);
         if armed {
+            rt_log("apply_armed: showing overlay");
             let _ = win.show();
+            rt_log("apply_armed: focusing overlay");
             let _ = win.set_focus();
         } else {
             let _ = win.hide();
         }
+        rt_log("apply_armed: window ops done");
     }
 
     // Esc must disarm even when another app holds keyboard focus, so it is
@@ -346,10 +367,11 @@ fn apply_armed(app: &AppHandle, armed: bool) {
             let ready = *state.ready_epoch.lock().unwrap();
             if still_armed && ready < epoch {
                 drop(state);
+                rt_log("watchdog: overlay never reported ready, disarming");
                 apply_armed(&handle, false);
                 message_box(
                     "TagFix disarmed itself",
-                    "The overlay did not draw within 6 seconds, so TagFix disarmed to keep the desktop usable.\n\nRun tagfix diag from a terminal and send tagfix-diag.txt.",
+                    "The overlay did not draw within 6 seconds, so TagFix disarmed to keep the desktop usable.\n\nSend tagfix-runtime.log from the folder next to tagfix.exe.",
                 );
             }
         });
@@ -359,8 +381,16 @@ fn apply_armed(app: &AppHandle, armed: bool) {
 /// The overlay JS calls this as soon as the armed UI is on screen.
 #[tauri::command]
 fn overlay_ready(state: State<AppState>) {
+    rt_log("overlay_ready received from webview");
     let epoch = *state.arm_epoch.lock().unwrap();
     *state.ready_epoch.lock().unwrap() = epoch;
+}
+
+/// The overlay JS calls this once its script has booted. If this line
+/// never appears in the runtime log, the webview content never loaded.
+#[tauri::command]
+fn ui_loaded() {
+    rt_log("overlay page loaded (JS booted)");
 }
 
 fn toggle_armed(app: &AppHandle) {
@@ -498,13 +528,30 @@ async fn capture_region(
     // just switched off, so the capture does not contain our own UI.
     std::thread::sleep(std::time::Duration::from_millis(90));
 
+    rt_log(&format!(
+        "capture: starting for region {},{} {}x{} on {}",
+        px, py, pw, ph, ctx.monitor_name
+    ));
     let monitor_name = ctx.monitor_name.clone();
     let capture_path = out_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        capture::capture_region_png(&monitor_name, region, capture_path)
+    let screen_x = ctx.monitor_x + px as i32;
+    let screen_y = ctx.monitor_y + py as i32;
+    let method = tauri::async_runtime::spawn_blocking(move || {
+        capture::capture_region_with_fallback(
+            &monitor_name,
+            region,
+            screen_x,
+            screen_y,
+            capture_path,
+        )
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?
+    .map_err(|e| {
+        rt_log(&format!("capture: FAILED: {}", e));
+        e
+    })?;
+    rt_log(&format!("capture: done via {}", method));
 
     let tag = Tag {
         number,
@@ -923,7 +970,8 @@ fn main() {
             export_sweep,
             get_settings,
             save_settings,
-            overlay_ready
+            overlay_ready,
+            ui_loaded
         ])
         .setup(|app| {
             checkpoint("setup entered");

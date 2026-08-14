@@ -200,4 +200,5 @@ listen("entry-cancelled", () => {
   closeEntry();
 });
 
+invoke("ui_loaded");
 invoke("get_armed").then(renderArmed);

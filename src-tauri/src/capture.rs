@@ -151,6 +151,125 @@ fn write_png(path: &PathBuf, width: u32, height: u32, rgba: &[u8]) -> std::io::R
     Ok(())
 }
 
+/// GDI BitBlt fallback: slower and blind to some hardware accelerated
+/// content, but works on display stacks where Windows Graphics Capture
+/// stalls. Takes the region in virtual screen coordinates.
+pub fn capture_region_gdi(
+    screen_x: i32,
+    screen_y: i32,
+    width: u32,
+    height: u32,
+    out_path: &std::path::Path,
+) -> Result<(), String> {
+    use windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS, SRCCOPY,
+    };
+    unsafe {
+        let screen_dc = GetDC(None);
+        if screen_dc.is_invalid() {
+            return Err("GetDC failed".into());
+        }
+        let mem_dc = CreateCompatibleDC(Some(screen_dc));
+        let bitmap = CreateCompatibleBitmap(screen_dc, width as i32, height as i32);
+        let old = SelectObject(mem_dc, bitmap.into());
+
+        let blit = BitBlt(
+            mem_dc,
+            0,
+            0,
+            width as i32,
+            height as i32,
+            Some(screen_dc),
+            screen_x,
+            screen_y,
+            SRCCOPY,
+        );
+
+        let mut result: Result<(), String> = match blit {
+            Ok(()) => Ok(()),
+            Err(e) => Err(format!("BitBlt failed: {}", e)),
+        };
+
+        if result.is_ok() {
+            let mut info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width as i32,
+                    // Negative height: top-down rows.
+                    biHeight: -(height as i32),
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bgra = vec![0u8; (width * height * 4) as usize];
+            let lines = GetDIBits(
+                mem_dc,
+                bitmap,
+                0,
+                height,
+                Some(bgra.as_mut_ptr() as *mut core::ffi::c_void),
+                &mut info,
+                DIB_RGB_COLORS,
+            );
+            if lines == 0 {
+                result = Err("GetDIBits failed".into());
+            } else {
+                // BGRA to RGBA in place.
+                for px in bgra.chunks_exact_mut(4) {
+                    px.swap(0, 2);
+                    px[3] = 255;
+                }
+                result = write_png(&out_path.to_path_buf(), width, height, &bgra)
+                    .map_err(|e| e.to_string());
+            }
+        }
+
+        SelectObject(mem_dc, old);
+        let _ = DeleteObject(bitmap.into());
+        let _ = DeleteDC(mem_dc);
+        ReleaseDC(None, screen_dc);
+        result
+    }
+}
+
+/// WGC capture with a hard timeout, falling back to GDI. Returns the
+/// method that produced the PNG.
+pub fn capture_region_with_fallback(
+    monitor_device_name: &str,
+    region: MonitorRegion,
+    screen_x: i32,
+    screen_y: i32,
+    out_path: std::path::PathBuf,
+) -> Result<&'static str, String> {
+    let (tx, rx) = mpsc::channel();
+    let name = monitor_device_name.to_string();
+    let wgc_path = out_path.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(capture_region_png(&name, region, wgc_path));
+    });
+
+    let wgc_result = rx.recv_timeout(std::time::Duration::from_secs(5));
+    match wgc_result {
+        Ok(Ok(())) => Ok("wgc"),
+        Ok(Err(e)) => {
+            capture_region_gdi(screen_x, screen_y, region.width, region.height, &out_path)
+                .map(|_| "gdi after wgc error")
+                .map_err(|ge| format!("wgc failed ({}), gdi failed ({})", e, ge))
+        }
+        Err(_) => {
+            // WGC is hung; leave its thread behind and take the GDI path.
+            capture_region_gdi(screen_x, screen_y, region.width, region.height, &out_path)
+                .map(|_| "gdi after wgc timeout")
+                .map_err(|ge| format!("wgc timed out, gdi failed ({})", ge))
+        }
+    }
+}
+
 /// Capture a region of one monitor into a PNG. Blocks until the frame is
 /// written. `monitor_device_name` is the Win32 device name, for example
 /// \\.\DISPLAY1; falls back to the primary monitor when not found.
