@@ -189,9 +189,13 @@ fn install_panic_reporter() {
 }
 
 /// Runtime trace log next to the exe, active in all builds. Arm and
-/// capture write here so a hang in the field names its own step.
+/// capture write here so a hang in the field names its own step. Several
+/// threads log at once, so writes are serialized to keep lines intact.
+static RT_LOG_LOCK: Mutex<()> = Mutex::new(());
+
 fn rt_log(msg: &str) {
     use std::io::Write;
+    let _guard = RT_LOG_LOCK.lock();
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -337,21 +341,9 @@ fn apply_armed(app: &AppHandle, armed: bool) {
         rt_log("apply_armed: window ops done");
     }
 
-    // Esc must disarm even when another app holds keyboard focus, so it is
-    // a global shortcut that only exists while armed.
-    let esc = Shortcut::new(None, Code::Escape);
-    if armed {
-        let r = app.global_shortcut().register(esc);
-        dbg_log(&format!("apply_armed(true): esc register {:?}", r));
-    } else {
-        let r = app.global_shortcut().unregister(esc);
-        dbg_log(&format!("apply_armed(false): esc unregister {:?}", r));
-    }
-
-    let _ = app.emit("armed-changed", armed);
-
-    // Watchdog: if the overlay webview never confirms it rendered, disarm
-    // rather than leave a possibly opaque window over the desktop.
+    // Watchdog FIRST, before anything that could block: if arming wedges,
+    // the overlay must still come off the screen. It hides the window
+    // directly rather than routing back through this function.
     if armed {
         let epoch = {
             let state: State<AppState> = app.state();
@@ -365,10 +357,16 @@ fn apply_armed(app: &AppHandle, armed: bool) {
             let state: State<AppState> = handle.state();
             let still_armed = *state.armed.lock().unwrap();
             let ready = *state.ready_epoch.lock().unwrap();
+            drop(state);
             if still_armed && ready < epoch {
-                drop(state);
-                rt_log("watchdog: overlay never reported ready, disarming");
-                apply_armed(&handle, false);
+                rt_log("watchdog: overlay never reported ready, hiding overlay");
+                if let Some(win) = handle.get_webview_window("overlay") {
+                    let _ = win.set_ignore_cursor_events(true);
+                    let _ = win.hide();
+                }
+                let st: State<AppState> = handle.state();
+                *st.armed.lock().unwrap() = false;
+                rt_log("watchdog: overlay hidden, disarmed");
                 message_box(
                     "TagFix disarmed itself",
                     "The overlay did not draw within 6 seconds, so TagFix disarmed to keep the desktop usable.\n\nSend tagfix-runtime.log from the folder next to tagfix.exe.",
@@ -376,6 +374,47 @@ fn apply_armed(app: &AppHandle, armed: bool) {
             }
         });
     }
+
+    // Esc must disarm even when another app holds keyboard focus, so it is
+    // a global shortcut that only exists while armed. Registering it MUST
+    // happen on a separate thread: apply_armed runs inside the global
+    // shortcut handler, and calling register from that handler's own
+    // thread deadlocks it (and with it the main thread, leaving the
+    // overlay stuck on screen).
+    {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            let esc = Shortcut::new(None, Code::Escape);
+            if armed {
+                rt_log("esc: registering (off handler thread)");
+                match handle.global_shortcut().register(esc) {
+                    Ok(()) => rt_log("esc: registered"),
+                    Err(e) => rt_log(&format!(
+                        "esc: register failed ({}); Esc still disarms while the overlay has focus",
+                        e
+                    )),
+                }
+            } else {
+                rt_log("esc: unregistering (off handler thread)");
+                match handle.global_shortcut().unregister(esc) {
+                    Ok(()) => rt_log("esc: unregistered"),
+                    Err(e) => rt_log(&format!("esc: unregister failed ({})", e)),
+                }
+            }
+        });
+    }
+
+    // Emitting reaches into the webview; keep it off the critical path so
+    // a wedged renderer cannot block arming either.
+    {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            rt_log("emit: armed-changed");
+            let _ = handle.emit("armed-changed", armed);
+            rt_log("emit: done");
+        });
+    }
+    rt_log("apply_armed: returning");
 }
 
 /// The overlay JS calls this as soon as the armed UI is on screen.
