@@ -11,8 +11,9 @@ your disk.
 
 TagFix is not an audio metadata repair tool. Different itch entirely.
 
-**Tagging:** arm, drag a box around the problem, describe it, pick severity
-and area, press Enter. The badge tracks your place in the sweep.
+**Tagging:** arm once, then keep working. When something looks wrong,
+Ctrl+Shift+drag a box around it, describe it, press Enter, and the screen
+is yours again.
 
 ![Armed TagFix overlay: a region of a File Explorer window has been
 captured and the tag entry popover is open with severity high and area
@@ -50,15 +51,21 @@ dependency is the WebView2 runtime, which is part of Windows 11 itself.
 
 ## Usage
 
-1. Press `Ctrl+Shift+T` (or tray menu, Arm). A red frame and ARMED badge
-   appear and the cursor becomes a crosshair.
-2. Drag a box around the thing that is wrong. On release, a popover opens.
+1. Press `Ctrl+Shift+T` (or tray menu, Arm). A small ARMED badge appears.
+   Armed is a standby state: carry on using the machine exactly as
+   normal. TagFix takes no clicks and no keys while it waits.
+2. When something looks wrong, hold `Ctrl+Shift` and drag a box around it
+   with the left mouse button. On release, a popover opens.
 3. Type what is wrong. Pick severity (high, medium, low) and area (layout,
    copy, a11y, behaviour, other) or keep the defaults.
-4. `Enter` saves the tag and you are immediately ready for the next one.
-   `Shift+Enter` inserts a newline. `Esc` cancels the tag without saving.
-5. `Esc` (outside tag entry) disarms. The overlay never intercepts clicks
-   while disarmed.
+4. `Enter` saves the tag and hands the screen straight back to you, still
+   armed for the next one. `Shift+Enter` inserts a newline. `Esc` cancels
+   the tag without saving.
+5. `Ctrl+Shift+T` again disarms, after which `Ctrl+Shift+drag` does
+   nothing.
+
+Only `Ctrl+Shift`+left click is intercepted, and only while armed. Every
+other key and click, `Esc` included, belongs to your own apps.
 6. `Ctrl+Shift+R` (or tray menu, Review and export): reorder tags by drag,
    edit text, change severity, drop tags (dropped tags stay in the sweep
    file and can be picked back up).
