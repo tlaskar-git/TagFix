@@ -66,6 +66,23 @@ phases are delivered.
 5. Open fixlist.html in a browser with the network cable pulled (or devtools
    offline). Expect: every image visible, zero external requests.
 
+## Regression: arm must never wedge the desktop
+
+The v0.1.0 to v0.1.6 freeze was a deadlock: the Esc global shortcut was
+registered from inside the global shortcut handler's own thread, which
+wedged that thread and the main thread with the full screen overlay
+already visible. It only reproduced where Esc was genuinely unregistered,
+because an existing registration returns an error immediately instead of
+doing the real work.
+
+1. Confirm Esc is free (`tagfix diag` reports `hotkey esc: free`).
+2. Arm, disarm, and re-arm several times in a row.
+3. Expect: the app stays responsive every time, and tagfix-runtime.log
+   shows `apply_armed: returning` followed by the esc and emit lines from
+   their own threads.
+4. Expect: no arm ever leaves the overlay on screen for more than six
+   seconds without the watchdog hiding it.
+
 ## Phase 6: settings and packaging
 
 1. Tray menu, Settings. Change the hotkey to `ctrl+alt+f9`, save. Expect:

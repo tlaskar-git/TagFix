@@ -14,13 +14,18 @@ let startX = 0;
 let startY = 0;
 
 function renderArmed(value) {
+  const changed = armed !== value;
   armed = value;
   document.body.classList.toggle("armed", armed);
   document.body.classList.toggle("disarmed", !armed);
   if (armed) {
-    // Tell the watchdog the armed UI actually made it to the screen.
-    requestAnimationFrame(() => invoke("overlay_ready"));
-    refreshCounter();
+    // Report ready immediately. requestAnimationFrame is not usable here:
+    // on a window the compositor is not painting it never fires, which
+    // would leave the watchdog thinking the UI is dead.
+    invoke("overlay_ready");
+    if (changed) {
+      refreshCounter();
+    }
   } else {
     closeEntry();
     cancelDrag();
@@ -202,3 +207,15 @@ listen("entry-cancelled", () => {
 
 invoke("ui_loaded");
 invoke("get_armed").then(renderArmed);
+
+// Backstop: events are the fast path, but if the IPC event never lands
+// this keeps the overlay in step with the real armed state.
+setInterval(() => {
+  invoke("get_armed")
+    .then((value) => {
+      if (Boolean(value) !== armed) {
+        renderArmed(Boolean(value));
+      }
+    })
+    .catch(() => {});
+}, 400);

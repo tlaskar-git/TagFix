@@ -3357,7 +3357,7 @@ dependencies = [
 
 [[package]]
 name = "tagfix"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "base64 0.22.1",
  "chrono",
