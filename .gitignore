@@ -5,3 +5,5 @@ tagfix-diag.txt
 tagfix-error.log
 tagfix-startup.log
 tagfix-runtime.log
+settings.json
+dist/sweeps/
