@@ -107,8 +107,10 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             }
             WM_MOUSEMOVE => {
                 if SELECTING.load(Ordering::SeqCst) {
+                    // Report the drag, but NEVER swallow a move: blocking
+                    // WM_MOUSEMOVE freezes the cursor itself, so the drag
+                    // can never leave the point it started from.
                     post(HookEvent::Update(x, y));
-                    return LRESULT(1);
                 }
             }
             WM_LBUTTONUP => {
