@@ -10,32 +10,32 @@ body {
   font-family: "Segoe UI", sans-serif;
 }
 
-body.armed {
-  cursor: crosshair;
-}
-
+/* Armed is a standby state: the overlay is click-through and the operator
+   keeps working, so the indicator stays quiet. No crosshair, because the
+   cursor belongs to whatever app is underneath. */
 #armed-frame {
   position: fixed;
   inset: 0;
-  border: 3px solid #e5484d;
+  border: 2px solid rgba(229, 72, 77, 0.55);
   pointer-events: none;
   display: none;
 }
 
 #armed-badge {
   position: fixed;
-  top: 8px;
+  top: 6px;
   left: 50%;
   transform: translateX(-50%);
-  background: #e5484d;
+  background: rgba(229, 72, 77, 0.9);
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  padding: 4px 14px;
+  letter-spacing: 0.06em;
+  padding: 3px 12px;
   border-radius: 999px;
   pointer-events: none;
   display: none;
+  white-space: nowrap;
 }
 
 body.armed #armed-frame,

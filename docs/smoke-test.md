@@ -19,9 +19,12 @@ phases are delivered.
 
 ## Phase 2: capture
 
-1. Arm. Expect: crosshair cursor.
-2. Drag a box over a window. Expect: red selection rectangle follows the
-   drag.
+1. Arm. Expect: the ARMED badge appears and nothing else changes. Click
+   around, type in an app, scroll: everything must behave normally,
+   because the overlay is click-through in standby.
+2. Hold `Ctrl+Shift` and drag a box over a window. Expect: red selection
+   rectangle follows the drag, and the app underneath does not receive
+   the click.
 3. Release. Expect: a popover opens; a `tag-NN.png` appears in the active
    sweep folder containing exactly the dragged region, with no TagFix
    chrome (no red frame, badge, or selection box) in the pixels.
@@ -37,13 +40,18 @@ phases are delivered.
    severity chips (high, medium, low) and area chips (layout, copy, a11y,
    behaviour, other), medium and other preselected.
 2. Type a note, press `Enter`. Expect: popover closes, badge counter
-   advances, still armed for the next tag.
+   advances, and the machine is immediately usable again (click something
+   underneath to confirm) while still armed.
 3. Capture another region, press `Shift+Enter` inside the text field.
    Expect: newline, no save.
 4. Press `Esc` with the popover open. Expect: popover closes, no tag saved,
-   the pending PNG is deleted, still armed.
-5. Speed check: five tags in under sixty seconds using only region drags and
-   typing.
+   the pending PNG is deleted, back to usable standby.
+5. Speed check: five tags in under sixty seconds using only Ctrl+Shift
+   drags and typing.
+6. Press `Ctrl+Shift+T` to disarm, then `Ctrl+Shift+drag`. Expect: nothing
+   happens and the drag reaches the app underneath.
+7. While armed but not tagging, press `Esc` in another app. Expect: that
+   app receives it; TagFix does not swallow Esc.
 
 ## Phase 4: sweep store
 

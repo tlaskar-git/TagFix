@@ -1,5 +1,7 @@
-// TagFix: tag what is wrong on screen, get a fix list out.
+﻿// TagFix: tag what is wrong on screen, get a fix list out.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod hook;
 
 use std::sync::Mutex;
 
@@ -38,13 +40,8 @@ struct PendingTag {
 
 struct AppState {
     armed: Mutex<bool>,
-    arm_ctx: Mutex<Option<ArmContext>>,
     pending: Mutex<Option<PendingTag>>,
     hotkey: Mutex<String>,
-    /// Bumped on every arm; the overlay JS echoes it back via
-    /// overlay_ready so a dead webview is detectable.
-    arm_epoch: Mutex<u64>,
-    ready_epoch: Mutex<u64>,
 }
 
 fn now_utc() -> String {
@@ -267,25 +264,22 @@ fn apply_launch_at_login(enable: bool) {
     }
 }
 
-/// Move the overlay onto the monitor that currently hosts the cursor and
-/// remember that monitor plus the foreground app for capture metadata.
-fn prepare_arm_context(app: &AppHandle) -> Option<ArmContext> {
+/// Describe the monitor holding a screen point, and the app in front at
+/// that moment. Called when a selection starts, while the overlay is
+/// still click-through, so the foreground window is the app under test.
+fn context_for_point(app: &AppHandle, x: i32, y: i32) -> Option<ArmContext> {
     let win = app.get_webview_window("overlay")?;
-    rt_log("arm: reading cursor and monitors");
-    let cursor = app.cursor_position().ok();
     let monitors = win.available_monitors().ok()?;
 
     let mut chosen = None;
-    if let Some(cur) = cursor {
-        for (i, m) in monitors.iter().enumerate() {
-            let p = m.position();
-            let s = m.size();
-            let inside_x = cur.x >= p.x as f64 && cur.x < (p.x + s.width as i32) as f64;
-            let inside_y = cur.y >= p.y as f64 && cur.y < (p.y + s.height as i32) as f64;
-            if inside_x && inside_y {
-                chosen = Some((i, m.clone()));
-                break;
-            }
+    for (i, m) in monitors.iter().enumerate() {
+        let p = m.position();
+        let s = m.size();
+        let inside_x = x >= p.x && x < p.x + s.width as i32;
+        let inside_y = y >= p.y && y < p.y + s.height as i32;
+        if inside_x && inside_y {
+            chosen = Some((i, m.clone()));
+            break;
         }
     }
     let (index, monitor) = match chosen {
@@ -293,13 +287,9 @@ fn prepare_arm_context(app: &AppHandle) -> Option<ArmContext> {
         None => (0, win.primary_monitor().ok()??),
     };
 
-    // Grab the foreground app BEFORE the overlay takes focus.
-    rt_log("arm: reading foreground window");
+    // The overlay is click-through in standby, so whatever is in front is
+    // the operator's actual app.
     let fg = capture::foreground_info();
-
-    rt_log("arm: positioning overlay on monitor");
-    let _ = win.set_position(monitor.position().clone());
-    let _ = win.set_size(monitor.size().clone());
 
     Some(ArmContext {
         monitor_index: index as u32,
@@ -314,98 +304,74 @@ fn prepare_arm_context(app: &AppHandle) -> Option<ArmContext> {
     })
 }
 
+/// Put the overlay on the monitor that holds a selection, without taking
+/// focus or interactivity away from the operator's app.
+fn place_overlay_for(app: &AppHandle, ctx: &ArmContext) {
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.set_position(tauri::PhysicalPosition::new(ctx.monitor_x, ctx.monitor_y));
+        let _ = win.set_size(tauri::PhysicalSize::new(ctx.monitor_w, ctx.monitor_h));
+    }
+}
+
+/// Standby keeps the overlay visible but click-through so the machine
+/// stays usable; entry mode makes it interactive to take typed text.
+fn set_overlay_interactive(app: &AppHandle, interactive: bool) {
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.set_ignore_cursor_events(!interactive);
+        if interactive {
+            let _ = win.set_focus();
+        }
+    }
+    // The capture gesture is off while a tag is being typed, and comes
+    // back only if the app is still armed.
+    if interactive {
+        hook::set_armed(false);
+    } else {
+        let state: State<AppState> = app.state();
+        let armed = *state.armed.lock().unwrap();
+        hook::set_armed(armed);
+    }
+    rt_log(&format!("overlay interactive: {}", interactive));
+}
+
 fn apply_armed(app: &AppHandle, armed: bool) {
     rt_log(&format!("apply_armed({}) enter", armed));
     let state: State<AppState> = app.state();
     *state.armed.lock().unwrap() = armed;
 
-    if armed {
-        let ctx = prepare_arm_context(app);
-        *state.arm_ctx.lock().unwrap() = ctx;
-    }
-
+    // Standby: the overlay is on screen but click-through, so the operator
+    // keeps using the machine normally. Nothing here takes focus and no
+    // global key is swallowed; the capture gesture arrives through the
+    // mouse hook instead.
     if let Some(win) = app.get_webview_window("overlay") {
-        // The overlay window only exists on screen while armed. Disarmed it
-        // is fully hidden, so it can never block or obscure the desktop,
-        // even on machines where window transparency fails.
-        rt_log("apply_armed: setting cursor events");
-        let _ = win.set_ignore_cursor_events(!armed);
+        rt_log("apply_armed: setting click-through");
+        let _ = win.set_ignore_cursor_events(true);
         if armed {
             rt_log("apply_armed: showing overlay");
             let _ = win.show();
-            rt_log("apply_armed: focusing overlay");
-            let _ = win.set_focus();
         } else {
             let _ = win.hide();
         }
         rt_log("apply_armed: window ops done");
     }
 
-    // Watchdog FIRST, before anything that could block: if arming wedges,
-    // the overlay must still come off the screen. It hides the window
-    // directly rather than routing back through this function.
-    if armed {
-        let epoch = {
-            let state: State<AppState> = app.state();
-            let mut e = state.arm_epoch.lock().unwrap();
-            *e += 1;
-            *e
+    // Discard any half finished selection or unsaved tag when disarming.
+    if !armed {
+        let taken = {
+            let st: State<AppState> = app.state();
+            let mut g = st.pending.lock().unwrap();
+            g.take()
         };
-        let handle = app.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(6));
-            let state: State<AppState> = handle.state();
-            let still_armed = *state.armed.lock().unwrap();
-            let ready = *state.ready_epoch.lock().unwrap();
-            drop(state);
-            if still_armed && ready < epoch {
-                rt_log("watchdog: overlay never reported ready, hiding overlay");
-                if let Some(win) = handle.get_webview_window("overlay") {
-                    let _ = win.set_ignore_cursor_events(true);
-                    let _ = win.hide();
-                }
-                let st: State<AppState> = handle.state();
-                *st.armed.lock().unwrap() = false;
-                rt_log("watchdog: overlay hidden, disarmed");
-                message_box(
-                    "TagFix disarmed itself",
-                    "The overlay did not draw within 6 seconds, so TagFix disarmed to keep the desktop usable.\n\nSend tagfix-runtime.log from the folder next to tagfix.exe.",
-                );
-            }
-        });
+        if let Some(p) = taken {
+            let png = sweeps_dir().join(&p.sweep_name).join(&p.tag.image);
+            let _ = std::fs::remove_file(png);
+        }
     }
 
-    // Esc must disarm even when another app holds keyboard focus, so it is
-    // a global shortcut that only exists while armed. Registering it MUST
-    // happen on a separate thread: apply_armed runs inside the global
-    // shortcut handler, and calling register from that handler's own
-    // thread deadlocks it (and with it the main thread, leaving the
-    // overlay stuck on screen).
-    {
-        let handle = app.clone();
-        std::thread::spawn(move || {
-            let esc = Shortcut::new(None, Code::Escape);
-            if armed {
-                rt_log("esc: registering (off handler thread)");
-                match handle.global_shortcut().register(esc) {
-                    Ok(()) => rt_log("esc: registered"),
-                    Err(e) => rt_log(&format!(
-                        "esc: register failed ({}); Esc still disarms while the overlay has focus",
-                        e
-                    )),
-                }
-            } else {
-                rt_log("esc: unregistering (off handler thread)");
-                match handle.global_shortcut().unregister(esc) {
-                    Ok(()) => rt_log("esc: unregistered"),
-                    Err(e) => rt_log(&format!("esc: unregister failed ({})", e)),
-                }
-            }
-        });
-    }
+    hook::set_armed(armed);
 
     // Emitting reaches into the webview; keep it off the critical path so
-    // a wedged renderer cannot block arming either.
+    // a wedged renderer cannot block arming.
     {
         let handle = app.clone();
         std::thread::spawn(move || {
@@ -417,12 +383,165 @@ fn apply_armed(app: &AppHandle, armed: bool) {
     rt_log("apply_armed: returning");
 }
 
-/// The overlay JS calls this as soon as the armed UI is on screen.
+/// Drive one selection through to a captured, pending tag. Runs on the
+/// hook worker thread, never on the hook callback itself.
+fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end: (i32, i32)) {
+    let x0 = start.0.min(end.0);
+    let y0 = start.1.min(end.1);
+    let w = (end.0 - start.0).abs();
+    let h = (end.1 - start.1).abs();
+    if w < 4 || h < 4 {
+        rt_log("selection: too small, ignored");
+        let _ = app.emit("selection-cancel", ());
+        return;
+    }
+
+    // Region relative to the monitor, in physical pixels.
+    let region = capture::MonitorRegion {
+        x: (x0 - ctx.monitor_x).max(0) as u32,
+        y: (y0 - ctx.monitor_y).max(0) as u32,
+        width: w as u32,
+        height: h as u32,
+    };
+
+    let ts = now_utc();
+    let store = SweepStore::new(sweeps_dir());
+    let (sweep_name, sweep) = match store.active_sweep(&ts) {
+        Ok(v) => v,
+        Err(e) => {
+            rt_log(&format!("selection: sweep open failed: {}", e));
+            let _ = app.emit("selection-cancel", ());
+            return;
+        }
+    };
+    let number = sweep.next_tag_number();
+    let image = store::tag_image_name(number);
+    let out_path = store.root().join(&sweep_name).join(&image);
+
+    // Take our own chrome off screen before grabbing pixels.
+    let _ = app.emit("selection-hide", ());
+    std::thread::sleep(std::time::Duration::from_millis(110));
+
+    rt_log(&format!(
+        "capture: starting for region {},{} {}x{} on {}",
+        region.x, region.y, region.width, region.height, ctx.monitor_name
+    ));
+    let method = match capture::capture_region_with_fallback(
+        &ctx.monitor_name,
+        region,
+        x0,
+        y0,
+        out_path,
+    ) {
+        Ok(m) => m,
+        Err(e) => {
+            rt_log(&format!("capture: FAILED: {}", e));
+            let _ = app.emit("selection-cancel", ());
+            return;
+        }
+    };
+    rt_log(&format!("capture: done via {}", method));
+
+    let tag = Tag {
+        number,
+        image,
+        captured_utc: ts,
+        monitor_index: ctx.monitor_index,
+        dpi_scale: ctx.dpi_scale,
+        region: store::Rect {
+            x: x0,
+            y: y0,
+            width: w as u32,
+            height: h as u32,
+        },
+        window_title: ctx.window_title.clone(),
+        process_name: ctx.process_name.clone(),
+        screen_resolution: format!("{}x{}", ctx.monitor_w, ctx.monitor_h),
+        text: String::new(),
+        severity: String::new(),
+        area: String::new(),
+        dropped: false,
+    };
+    {
+        let st: State<AppState> = app.state();
+        *st.pending.lock().unwrap() = Some(PendingTag {
+            sweep_name: sweep_name.clone(),
+            tag,
+        });
+    }
+
+    // Entry mode: the overlay takes clicks and keys just long enough for
+    // the operator to describe the tag.
+    let scale = ctx.dpi_scale.max(0.1);
+    let css = serde_json::json!({
+        "x": (x0 - ctx.monitor_x) as f64 / scale,
+        "y": (y0 - ctx.monitor_y) as f64 / scale,
+        "w": w as f64 / scale,
+        "h": h as f64 / scale,
+        "tagNumber": number,
+        "sweepName": sweep_name,
+    });
+    set_overlay_interactive(app, true);
+    let _ = app.emit("entry-open", css);
+    rt_log("entry: open");
+}
+
+/// Worker that turns hook events into overlay updates and captures.
+fn spawn_hook_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<hook::HookEvent>) {
+    std::thread::spawn(move || {
+        let mut ctx: Option<ArmContext> = None;
+        let mut start = (0, 0);
+        let mut last_emit = std::time::Instant::now();
+        for event in rx {
+            match event {
+                hook::HookEvent::Start(x, y) => {
+                    rt_log(&format!("selection: start at {},{}", x, y));
+                    start = (x, y);
+                    ctx = context_for_point(&app, x, y);
+                    if let Some(c) = ctx.as_ref() {
+                        place_overlay_for(&app, c);
+                        let _ = app.emit("selection-start", ());
+                    }
+                }
+                hook::HookEvent::Update(x, y) => {
+                    let Some(c) = ctx.as_ref() else { continue };
+                    // The hook fires per mouse move; keep the UI updates
+                    // to roughly one frame.
+                    if last_emit.elapsed() < std::time::Duration::from_millis(16) {
+                        continue;
+                    }
+                    last_emit = std::time::Instant::now();
+                    let scale = c.dpi_scale.max(0.1);
+                    let rect = serde_json::json!({
+                        "x": (start.0.min(x) - c.monitor_x) as f64 / scale,
+                        "y": (start.1.min(y) - c.monitor_y) as f64 / scale,
+                        "w": (x - start.0).abs() as f64 / scale,
+                        "h": (y - start.1).abs() as f64 / scale,
+                    });
+                    let _ = app.emit("selection-update", rect);
+                }
+                hook::HookEvent::End(x, y) => {
+                    rt_log(&format!("selection: end at {},{}", x, y));
+                    if let Some(c) = ctx.take() {
+                        handle_selection_end(&app, c, start, (x, y));
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Leave entry mode and go back to standby, where the machine is usable.
+fn back_to_standby(app: &AppHandle) {
+    set_overlay_interactive(app, false);
+    let _ = app.emit("entry-closed", ());
+    rt_log("entry: closed, back to standby");
+}
+
+/// The overlay JS calls this once its armed UI is on screen.
 #[tauri::command]
-fn overlay_ready(state: State<AppState>) {
+fn overlay_ready() {
     rt_log("overlay_ready received from webview");
-    let epoch = *state.arm_epoch.lock().unwrap();
-    *state.ready_epoch.lock().unwrap() = epoch;
 }
 
 /// The overlay JS calls this once its script has booted. If this line
@@ -498,6 +617,11 @@ fn save_tag(
     store
         .append_tag(&pending.sweep_name, tag)
         .map_err(|e| e.to_string())?;
+
+    // Saved: hand the screen straight back to the operator, still armed
+    // for the next tag.
+    back_to_standby(&app);
+
     Ok(CaptureResult {
         tag_number: number,
         sweep_name: pending.sweep_name,
@@ -516,117 +640,8 @@ fn cancel_tag(app: AppHandle) -> Result<(), String> {
         let png = sweeps_dir().join(&p.sweep_name).join(&p.tag.image);
         let _ = std::fs::remove_file(png);
     }
+    back_to_standby(&app);
     Ok(())
-}
-
-fn has_pending(app: &AppHandle) -> bool {
-    let state: State<AppState> = app.state();
-    let guard = state.pending.lock().unwrap();
-    guard.is_some()
-}
-
-/// x, y, w, h arrive in overlay CSS pixels, relative to the armed monitor.
-#[tauri::command]
-async fn capture_region(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-) -> Result<CaptureResult, String> {
-    let ctx = {
-        let state: State<AppState> = app.state();
-        let guard = state.arm_ctx.lock().unwrap();
-        guard.clone().ok_or("not armed, no capture context")?
-    };
-
-    let scale = ctx.dpi_scale;
-    let px = (x * scale).round().max(0.0) as u32;
-    let py = (y * scale).round().max(0.0) as u32;
-    let pw = (w * scale).round() as u32;
-    let ph = (h * scale).round() as u32;
-    if pw < 4 || ph < 4 {
-        return Err("selection too small".into());
-    }
-
-    let region = capture::MonitorRegion {
-        x: px,
-        y: py,
-        width: pw,
-        height: ph,
-    };
-
-    let ts = now_utc();
-    let store = SweepStore::new(sweeps_dir());
-    let (sweep_name, sweep) = store.active_sweep(&ts).map_err(|e| e.to_string())?;
-    let number = sweep.next_tag_number();
-    let image = store::tag_image_name(number);
-    let out_path = store.root().join(&sweep_name).join(&image);
-
-    // Give the compositor a beat to hide the overlay chrome the JS side
-    // just switched off, so the capture does not contain our own UI.
-    std::thread::sleep(std::time::Duration::from_millis(90));
-
-    rt_log(&format!(
-        "capture: starting for region {},{} {}x{} on {}",
-        px, py, pw, ph, ctx.monitor_name
-    ));
-    let monitor_name = ctx.monitor_name.clone();
-    let capture_path = out_path.clone();
-    let screen_x = ctx.monitor_x + px as i32;
-    let screen_y = ctx.monitor_y + py as i32;
-    let method = tauri::async_runtime::spawn_blocking(move || {
-        capture::capture_region_with_fallback(
-            &monitor_name,
-            region,
-            screen_x,
-            screen_y,
-            capture_path,
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| {
-        rt_log(&format!("capture: FAILED: {}", e));
-        e
-    })?;
-    rt_log(&format!("capture: done via {}", method));
-
-    let tag = Tag {
-        number,
-        image,
-        captured_utc: ts,
-        monitor_index: ctx.monitor_index,
-        dpi_scale: ctx.dpi_scale,
-        region: store::Rect {
-            x: ctx.monitor_x + px as i32,
-            y: ctx.monitor_y + py as i32,
-            width: pw,
-            height: ph,
-        },
-        window_title: ctx.window_title.clone(),
-        process_name: ctx.process_name.clone(),
-        screen_resolution: format!("{}x{}", ctx.monitor_w, ctx.monitor_h),
-        text: String::new(),
-        severity: String::new(),
-        area: String::new(),
-        dropped: false,
-    };
-
-    // The PNG is on disk but the tag is only pending: Enter saves it into
-    // sweep.json, Esc deletes the PNG again.
-    {
-        let state: State<AppState> = app.state();
-        *state.pending.lock().unwrap() = Some(PendingTag {
-            sweep_name: sweep_name.clone(),
-            tag,
-        });
-    }
-
-    Ok(CaptureResult {
-        tag_number: number,
-        sweep_name,
-    })
 }
 
 #[tauri::command]
@@ -954,11 +969,8 @@ fn main() {
         }))
         .manage(AppState {
             armed: Mutex::new(false),
-            arm_ctx: Mutex::new(None),
             pending: Mutex::new(None),
             hotkey: Mutex::new(settings::load(&exe_dir()).hotkey),
-            arm_epoch: Mutex::new(0),
-            ready_epoch: Mutex::new(0),
         })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -972,24 +984,14 @@ fn main() {
                         let raw = state.hotkey.lock().unwrap().clone();
                         parse_hotkey(&raw)
                     };
+                    // Esc is deliberately NOT a global shortcut: in standby
+                    // the operator is using their own apps and Esc belongs
+                    // to them. The overlay handles Esc while it has focus
+                    // for tag entry.
                     if *shortcut == arm_hotkey {
                         toggle_armed(app);
                     } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyR) {
                         open_review(app);
-                    } else if shortcut.matches(Modifiers::empty(), Code::Escape) {
-                        // Esc is contextual: an open tag entry is cancelled,
-                        // otherwise the overlay disarms.
-                        if has_pending(app) {
-                            let state: State<AppState> = app.state();
-                            let taken = state.pending.lock().unwrap().take();
-                            if let Some(p) = taken {
-                                let png = sweeps_dir().join(&p.sweep_name).join(&p.tag.image);
-                                let _ = std::fs::remove_file(png);
-                            }
-                            let _ = app.emit("entry-cancelled", ());
-                        } else {
-                            apply_armed(app, false);
-                        }
                     }
                 })
                 .build(),
@@ -997,7 +999,6 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             set_armed,
             get_armed,
-            capture_region,
             save_tag,
             cancel_tag,
             get_status,
@@ -1056,7 +1057,8 @@ fn main() {
             checkpoint("hotkeys registered");
 
             // Tray icon and menu.
-            let arm_item = MenuItem::with_id(app, "arm", "Arm (Ctrl+Shift+T)", true, None::<&str>)?;
+            let arm_item =
+                MenuItem::with_id(app, "arm", "Arm / disarm (Ctrl+Shift+T)", true, None::<&str>)?;
             let review_item = MenuItem::with_id(
                 app,
                 "review",
@@ -1076,6 +1078,23 @@ fn main() {
                 &[&arm_item, &review_item, &sweeps_item, &settings_item, &help_item, &quit_item],
             )?;
 
+            // Global mouse hook for the Ctrl+Shift+LeftDrag capture
+            // gesture. It must be installed on the thread that pumps
+            // messages, which is this one.
+            let (tx, rx) = std::sync::mpsc::channel();
+            match hook::install(tx) {
+                Ok(()) => checkpoint("mouse hook installed"),
+                Err(e) => {
+                    checkpoint("mouse hook FAILED");
+                    let text = format!(
+                        "TagFix could not install its mouse hook ({}), so Ctrl+Shift+drag will not mark regions.\n\nSecurity software can block this.",
+                        e
+                    );
+                    std::thread::spawn(move || message_box("TagFix hook problem", &text));
+                }
+            }
+            spawn_hook_worker(handle.clone(), rx);
+
             checkpoint("tray building");
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
@@ -1088,7 +1107,11 @@ fn main() {
                     "open-sweeps" => open_sweeps_folder(),
                     "settings" => open_settings(app),
                     "help" => open_help(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        hook::set_armed(false);
+                        hook::uninstall();
+                        app.exit(0)
+                    }
                     _ => {}
                 })
                 .build(app)?;
