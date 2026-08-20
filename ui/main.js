@@ -1,42 +1,55 @@
 // TagFix overlay UI. Vanilla JS, no bundler, no framework.
 //
-// While armed the overlay is click-through: the operator keeps using the
-// machine. The selection rectangle is driven by Ctrl+Shift+drag events
-// coming from the Rust side global mouse hook, not by mouse events here.
-// Only tag entry makes the overlay interactive.
+// While armed the overlay is click-through and silent: the operator keeps
+// using the machine and sees nothing but a thin frame. The selection
+// rectangle is driven by Ctrl+Shift+drag events coming from the Rust side
+// global mouse hook. Only tag entry makes the overlay interactive.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const selectionEl = document.getElementById("selection");
-const counterEl = document.getElementById("tag-counter");
+const toastEl = document.getElementById("toast");
 const popoverEl = document.getElementById("popover");
 const tagTextEl = document.getElementById("tag-text");
 
 let armed = false;
 let entryOpen = false;
+let toastTimer = null;
+
+// The toast is the only thing that ever speaks, and only briefly.
+// duration 0 keeps it up until something hides it.
+function showToast(message, duration) {
+  toastEl.textContent = message;
+  document.body.classList.add("toast-visible");
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  if (duration > 0) {
+    toastTimer = setTimeout(hideToast, duration);
+  }
+}
+
+function hideToast() {
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  document.body.classList.remove("toast-visible");
+}
 
 function renderArmed(value) {
-  const changed = armed !== value;
   armed = value;
   document.body.classList.toggle("armed", armed);
   document.body.classList.toggle("disarmed", !armed);
   if (armed) {
+    // Deliberately silent: no banner while the operator works.
     invoke("overlay_ready");
-    if (changed) {
-      refreshCounter();
-    }
   } else {
+    document.body.classList.remove("one-shot");
     closeEntry();
     hideSelection();
-  }
-}
-
-async function refreshCounter() {
-  try {
-    const s = await invoke("get_status");
-    counterEl.textContent = " next tag " + s.nextTagNumber + " in " + s.sweepName;
-  } catch (err) {
-    counterEl.textContent = "";
+    hideToast();
   }
 }
 
@@ -114,11 +127,11 @@ async function saveEntry() {
   const area = document.getElementById("area-chips").dataset.value;
   closeEntry();
   try {
-    await invoke("save_tag", { text, severity, area });
+    const result = await invoke("save_tag", { text, severity, area });
+    showToast("tag " + result.tagNumber + " saved", 1400);
   } catch (err) {
-    counterEl.textContent = " save failed: " + err;
+    showToast("save failed: " + err, 4000);
   }
-  refreshCounter();
 }
 
 async function cancelEntry() {
@@ -128,7 +141,7 @@ async function cancelEntry() {
   } catch (err) {
     // Nothing pending; already cancelled.
   }
-  refreshCounter();
+  hideToast();
 }
 
 tagTextEl.addEventListener("keydown", (event) => {
@@ -151,8 +164,15 @@ listen("armed-changed", (event) => {
 });
 
 // One-shot mode: the next plain drag marks a region, no chording needed.
+// This one does need saying, because it changes what the next click does.
 listen("one-shot", (event) => {
-  document.body.classList.toggle("one-shot", Boolean(event.payload));
+  const on = Boolean(event.payload);
+  document.body.classList.toggle("one-shot", on);
+  if (on) {
+    showToast("Drag now to mark a region", 0);
+  } else {
+    hideToast();
+  }
 });
 
 listen("selection-start", () => {
@@ -174,21 +194,18 @@ listen("selection-hide", () => {
 listen("selection-cancel", (event) => {
   document.body.classList.remove("capturing");
   hideSelection();
-  // Never fail silently: say why nothing was captured, then go back to
-  // the normal standby text.
+  // Never fail silently: say why nothing was captured, briefly.
   const why =
     event.payload && event.payload.reason
       ? event.payload.reason
       : "nothing captured";
-  counterEl.textContent = " " + why;
-  setTimeout(refreshCounter, 2500);
+  showToast(why, 2500);
 });
 
 listen("entry-open", (event) => {
   document.body.classList.remove("capturing");
-  const p = event.payload;
-  counterEl.textContent = " tag " + p.tagNumber + " in " + p.sweepName;
-  openEntry(p);
+  hideToast();
+  openEntry(event.payload);
 });
 
 listen("entry-closed", () => {

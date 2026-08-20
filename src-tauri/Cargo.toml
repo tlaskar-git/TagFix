@@ -1,6 +1,6 @@
 [package]
 name = "tagfix"
-version = "0.2.2"
+version = "0.2.3"
 description = "Tag what is wrong on screen, get a fix list out."
 authors = ["tlaskar-git"]
 edition = "2021"
