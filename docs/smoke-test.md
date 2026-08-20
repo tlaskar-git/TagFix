@@ -9,8 +9,9 @@ phases are delivered.
    out of the tray overflow on first run if Windows hides it).
 2. Right-click the tray icon. Expect menu: Arm, Review and export, Open
    sweeps folder, Settings, Quit.
-3. Press `Ctrl+Shift+T`. Expect: red frame and ARMED badge appear.
-4. Press `Esc`. Expect: frame and badge disappear.
+3. Press `Ctrl+Shift+T`. Expect: a thin red frame appears at the screen
+   edge, and nothing else: no banner, no message.
+4. Press `Ctrl+Shift+T` again. Expect: the frame disappears.
 5. While disarmed, click on a window underneath the overlay. Expect: the
    click lands on that window, not on the overlay.
 6. Tray menu, Open sweeps folder. Expect: Explorer opens the sweeps
@@ -19,22 +20,22 @@ phases are delivered.
 
 ## Phase 2: capture
 
-1. Arm. Expect: the ARMED badge appears and nothing else changes. Click
+1. Arm. Expect: only the thin frame appears, no banner. Click
    around, type in an app, scroll: everything must behave normally,
    because the overlay is click-through in standby.
 2. Hold `Ctrl+Shift` and drag a box over a window. Expect: red selection
    rectangle follows the drag, and the app underneath does not receive
    the click.
-2b. Trackpad path: press `Ctrl+Shift+S`. Expect: the badge changes to
-   DRAG NOW. Drag with no keys held. Expect: the same selection
-   behaviour, and the mode ends after that one drag.
+2b. Trackpad path: press `Ctrl+Shift+S`. Expect: a DRAG NOW prompt
+   appears. Drag with no keys held. Expect: the same selection
+   behaviour, the prompt clears, and the mode ends after that one drag.
 2c. If a click never starts a selection, check tagfix-runtime.log for
    "click seen while armed but not a capture gesture (ctrl=..,
    shift=..)". That line proves the hook sees the click and shows what
    the keyboard state looked like at that moment.
 3. Release. Expect: a popover opens; a `tag-NN.png` appears in the active
    sweep folder containing exactly the dragged region, with no TagFix
-   chrome (no red frame, badge, or selection box) in the pixels.
+   chrome (no red frame, prompt, or selection box) in the pixels.
 4. On a machine with a secondary monitor at 150 percent scaling: move the
    cursor to that monitor, arm, drag a region. Expect: pixel-correct PNG and
    a region rect in sweep.json matching the physical pixels.
@@ -46,9 +47,10 @@ phases are delivered.
 1. Capture a region. Expect: popover near the region with text field,
    severity chips (high, medium, low) and area chips (layout, copy, a11y,
    behaviour, other), medium and other preselected.
-2. Type a note, press `Enter`. Expect: popover closes, badge counter
-   advances, and the machine is immediately usable again (click something
-   underneath to confirm) while still armed.
+2. Type a note, press `Enter`. Expect: popover closes, a brief "tag N
+   saved" confirmation appears and clears itself, and the machine is
+   immediately usable again (click something underneath to confirm)
+   while still armed.
 3. Capture another region, press `Shift+Enter` inside the text field.
    Expect: newline, no save.
 4. Press `Esc` with the popover open. Expect: popover closes, no tag saved,

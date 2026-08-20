@@ -21,16 +21,18 @@ body {
   display: none;
 }
 
-#armed-badge {
+/* Shown only when there is something to say: a one-shot prompt, or a
+   short confirmation. Never a permanent banner over the operator's work. */
+#toast {
   position: fixed;
   top: 6px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(229, 72, 77, 0.9);
+  background: rgba(229, 72, 77, 0.92);
   color: #fff;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   padding: 3px 12px;
   border-radius: 999px;
   pointer-events: none;
@@ -38,26 +40,16 @@ body {
   white-space: nowrap;
 }
 
-body.armed #armed-frame,
-body.armed #armed-badge {
+body.toast-visible #toast {
   display: block;
 }
 
-.badge-oneshot {
-  display: none;
+body.armed #armed-frame {
+  display: block;
 }
 
-body.one-shot .badge-standby {
-  display: none;
-}
-
-body.one-shot .badge-oneshot {
-  display: inline;
-}
-
-/* One-shot is a deliberate, momentary mode: make it obvious. */
-body.one-shot #armed-badge {
-  background: #e5484d;
+/* One shot is a deliberate, momentary mode: make it unmistakable. */
+body.one-shot #toast {
   box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.35);
 }
 
@@ -75,7 +67,7 @@ body.one-shot #armed-frame {
 
 /* During the actual pixel grab every bit of overlay chrome disappears. */
 body.capturing #armed-frame,
-body.capturing #armed-badge,
+body.capturing #toast,
 body.capturing #selection,
 body.capturing #popover {
   display: none !important;

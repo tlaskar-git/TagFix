@@ -51,14 +51,15 @@ dependency is the WebView2 runtime, which is part of Windows 11 itself.
 
 ## Usage
 
-1. Press `Ctrl+Shift+T` (or tray menu, Arm). A small ARMED badge appears.
-   Armed is a standby state: carry on using the machine exactly as
-   normal. TagFix takes no clicks and no keys while it waits.
+1. Press `Ctrl+Shift+T` (or tray menu, Arm). Armed is a quiet standby
+   state: carry on using the machine exactly as normal. There is no
+   banner and no message, only a thin frame at the edge of the screen,
+   and TagFix takes no clicks and no keys while it waits.
 2. When something looks wrong, hold `Ctrl+Shift` and drag a box around it
    with the left mouse button. On release, a popover opens.
    On a laptop trackpad, where holding two keys through a click is
-   awkward, press `Ctrl+Shift+S` instead: the badge changes to DRAG NOW
-   and your next ordinary drag marks the region.
+   awkward, press `Ctrl+Shift+S` instead: a short DRAG NOW prompt
+   appears and your next ordinary drag marks the region.
 3. Type what is wrong. Pick severity (high, medium, low) and area (layout,
    copy, a11y, behaviour, other) or keep the defaults.
 4. `Enter` saves the tag and hands the screen straight back to you, still
@@ -66,9 +67,6 @@ dependency is the WebView2 runtime, which is part of Windows 11 itself.
    the tag without saving.
 5. `Ctrl+Shift+T` again disarms, after which `Ctrl+Shift+drag` does
    nothing.
-
-Only `Ctrl+Shift`+left click is intercepted, and only while armed. Every
-other key and click, `Esc` included, belongs to your own apps.
 6. `Ctrl+Shift+R` (or tray menu, Review and export): reorder tags by drag,
    edit text, change severity, drop tags (dropped tags stay in the sweep
    file and can be picked back up).
@@ -77,6 +75,9 @@ other key and click, `Esc` included, belongs to your own apps.
    - `fixlist.html`: single file, images inlined, opens anywhere offline
    - `brief.md`: agent brief, one task with an acceptance criterion per tag
    A one line pointer to `brief.md` is copied to the clipboard.
+
+Only `Ctrl+Shift`+left click is intercepted, and only while armed. Every
+other key and click, `Esc` included, belongs to your own apps.
 
 ## CLI
 
