@@ -1293,12 +1293,193 @@ fn reorder_tags(dir_name: String, order: Vec<u32>) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Write fixlist.md, fixlist.html and brief.md into the sweep folder and
-/// return the one line pointer that goes to the clipboard. Nothing touches
-/// disk until the operator presses Export, which calls this.
+/// Write the five renderings into the sweep folder, plus a filtered copy
+/// into every configured target export directory, and return the clipboard
+/// pointer with the folders written. Nothing touches disk until the
+/// operator presses Export, which calls this.
 #[tauri::command]
-fn export_sweep(dir_name: String) -> Result<String, String> {
-    tagfix::export::export_sweep_files(&sweeps_dir(), &dir_name).map_err(|e| e.to_string())
+fn export_sweep(dir_name: String) -> Result<tagfix::export::ExportResult, String> {
+    let settings = settings::load(&exe_dir());
+    tagfix::export::export_sweep_files(&sweeps_dir(), &dir_name, &settings.targets)
+        .map_err(|e| e.to_string())
+}
+
+/// A file name that cannot climb out of the sweeps folder. Every command
+/// below takes names from a webview, so none of them are trusted.
+fn safe_name(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+        || trimmed.contains(':')
+    {
+        return Err(format!("bad name: {}", name));
+    }
+    Ok(trimmed)
+}
+
+/// Render any of the five exports from sweep.json on the fly. Nothing is
+/// written: Copy for chat has no reason to leave a file behind.
+#[tauri::command]
+fn render_export(dir_name: String, file_name: String) -> Result<String, String> {
+    let dir_name = safe_name(&dir_name)?.to_string();
+    let file_name = safe_name(&file_name)?.to_string();
+    let root = sweeps_dir();
+    let sweep = SweepStore::new(root.clone())
+        .load_sweep(&dir_name)
+        .map_err(|e| e.to_string())?;
+    let dir = root.join(&dir_name);
+    tagfix::export::render_named(&sweep, &dir_name, &file_name, |img| {
+        std::fs::read(dir.join(img)).ok()
+    })
+    .ok_or_else(|| format!("not an export file: {}", file_name))
+}
+
+/// Open one export in whatever the shell has registered for it, rendering
+/// first when the file is missing or older than the sweep it describes.
+#[tauri::command]
+fn open_export(dir_name: String, file_name: String) -> Result<String, String> {
+    let dir_name = safe_name(&dir_name)?.to_string();
+    let file_name = safe_name(&file_name)?.to_string();
+    if !tagfix::export::EXPORT_FILES.contains(&file_name.as_str()) {
+        return Err(format!("not an export file: {}", file_name));
+    }
+    let dir = sweeps_dir().join(&dir_name);
+    let path = dir.join(&file_name);
+    let modified = |p: &std::path::Path| p.metadata().and_then(|m| m.modified()).ok();
+    // Stale means "older than sweep.json", so an edit in the review window
+    // is never opened as yesterday's rendering.
+    let stale = match (modified(&path), modified(&dir.join("sweep.json"))) {
+        (Some(file), Some(sweep)) => file < sweep,
+        _ => true,
+    };
+    if stale {
+        let text = render_export(dir_name.clone(), file_name.clone())?;
+        std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    }
+    shell_open(&path)?;
+    Ok(path.display().to_string())
+}
+
+/// ShellExecuteW, the same call Explorer makes on a double click.
+fn shell_open(path: &std::path::Path) -> Result<(), String> {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let file = HSTRING::from(path.as_os_str());
+    let verb = HSTRING::from("open");
+    let result = unsafe { ShellExecuteW(None, &verb, &file, None, None, SW_SHOWNORMAL) };
+    // ShellExecuteW returns a fake HINSTANCE; anything at or below 32 is an
+    // error code rather than a handle.
+    if result.0 as isize <= 32 {
+        return Err(format!("could not open {}", path.display()));
+    }
+    Ok(())
+}
+
+/// Save one export wherever the operator points the native dialog. Async so
+/// the blocking dialog never runs on the thread pumping the event loop.
+#[tauri::command(async)]
+fn save_export_as(
+    app: AppHandle,
+    dir_name: String,
+    file_name: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let text = render_export(dir_name, file_name.clone())?;
+    let chosen = app
+        .dialog()
+        .file()
+        .set_file_name(&file_name)
+        .blocking_save_file();
+    let Some(chosen) = chosen else {
+        // Cancelled: not an error, just nothing to report.
+        return Ok(None);
+    };
+    let path = chosen.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// One PNG from a sweep folder as base64, for the review thumbnails. Kept
+/// as a command so the asset protocol stays switched off.
+#[tauri::command]
+fn read_image(dir_name: String, image: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let dir_name = safe_name(&dir_name)?.to_string();
+    let image = safe_name(&image)?.to_string();
+    let path = sweeps_dir().join(&dir_name).join(&image);
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+/// One row of the carry forward picker. Dropped tags are listed too: a
+/// re-report often starts from something dropped last round.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SweepTagSummary {
+    number: u32,
+    text: String,
+    kind: String,
+    image: Option<String>,
+    dropped: bool,
+}
+
+#[tauri::command]
+fn list_sweep_tags(dir_name: String) -> Result<Vec<SweepTagSummary>, String> {
+    let dir_name = safe_name(&dir_name)?.to_string();
+    let sweep = SweepStore::new(sweeps_dir())
+        .load_sweep(&dir_name)
+        .map_err(|e| e.to_string())?;
+    Ok(sweep
+        .tags
+        .iter()
+        .map(|t| SweepTagSummary {
+            number: t.number,
+            text: t.text.lines().next().unwrap_or("").trim().to_string(),
+            kind: t.kind.clone(),
+            image: t.image.clone(),
+            dropped: t.dropped,
+        })
+        .collect())
+}
+
+/// Copy tags from an earlier sweep into another one as re-reports. Returns
+/// the numbers they were given in the destination.
+#[tauri::command]
+fn carry_forward(
+    app: AppHandle,
+    source: String,
+    numbers: Vec<u32>,
+    dest: String,
+) -> Result<Vec<u32>, String> {
+    let source = safe_name(&source)?.to_string();
+    let dest = safe_name(&dest)?.to_string();
+    let store = SweepStore::new(sweeps_dir());
+    let ts = now_utc();
+    let mut carried = Vec::new();
+    for number in numbers {
+        let tag = store
+            .carry_forward(&source, number, &dest, &ts)
+            .map_err(|e| e.to_string())?;
+        carried.push(tag.number);
+    }
+    rt_log(&format!(
+        "carry forward: {} tags from {} into {}",
+        carried.len(),
+        source,
+        dest
+    ));
+    let _ = app.emit("sweeps-changed", dest);
+    Ok(carried)
+}
+
+/// The review window's New sweep button opens the same prompt the tray
+/// item does, so there is one way to name a sweep.
+#[tauri::command]
+fn new_sweep_prompt(app: AppHandle) {
+    open_new_sweep(&app);
 }
 
 #[tauri::command]
@@ -1614,6 +1795,9 @@ fn main() {
     checkpoint("building tauri app");
 
     tauri::Builder::default()
+        // Save as needs a native save dialog; nothing else in the plugin is
+        // permitted (capabilities allow dialog:allow-save only).
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
             // A second launch lands here in the first instance's process.
             std::thread::spawn(|| {
@@ -1750,6 +1934,13 @@ fn main() {
             attach_next_capture,
             create_sweep,
             close_new_sweep,
+            new_sweep_prompt,
+            render_export,
+            open_export,
+            save_export_as,
+            read_image,
+            list_sweep_tags,
+            carry_forward,
             overlay_ready,
             ui_loaded
         ])
