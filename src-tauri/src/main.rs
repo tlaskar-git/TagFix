@@ -363,8 +363,10 @@ fn apply_armed(app: &AppHandle, armed: bool) {
             g.take()
         };
         if let Some(p) = taken {
-            let png = sweeps_dir().join(&p.sweep_name).join(&p.tag.image);
-            let _ = std::fs::remove_file(png);
+            if let Some(image) = &p.tag.image {
+                let png = sweeps_dir().join(&p.sweep_name).join(image);
+                let _ = std::fs::remove_file(png);
+            }
         }
     }
 
@@ -449,16 +451,16 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
 
     let tag = Tag {
         number,
-        image,
+        image: Some(image),
         captured_utc: ts,
         monitor_index: ctx.monitor_index,
         dpi_scale: ctx.dpi_scale,
-        region: store::Rect {
+        region: Some(store::Rect {
             x: x0,
             y: y0,
             width: w,
             height: h,
-        },
+        }),
         window_title: ctx.window_title.clone(),
         process_name: ctx.process_name.clone(),
         screen_resolution: format!("{}x{}", ctx.monitor_w, ctx.monitor_h),
@@ -466,6 +468,9 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
         severity: String::new(),
         area: String::new(),
         dropped: false,
+        // Phase B fills the URL, the element, the context frame and the
+        // target in; a region tag defaults to the rest.
+        ..Tag::default()
     };
     {
         let st: State<AppState> = app.state();
@@ -656,8 +661,10 @@ fn cancel_tag(app: AppHandle) -> Result<(), String> {
         guard.take()
     };
     if let Some(p) = pending {
-        let png = sweeps_dir().join(&p.sweep_name).join(&p.tag.image);
-        let _ = std::fs::remove_file(png);
+        if let Some(image) = &p.tag.image {
+            let png = sweeps_dir().join(&p.sweep_name).join(image);
+            let _ = std::fs::remove_file(png);
+        }
     }
     back_to_standby(&app);
     Ok(())
@@ -684,9 +691,13 @@ fn update_tag(
     text: String,
     severity: String,
     area: String,
+    target: Option<String>,
 ) -> Result<(), String> {
+    // The popover only learns to send a target in Phase B; until then an
+    // absent one keeps the field empty rather than failing the call.
+    let target = target.unwrap_or_default();
     SweepStore::new(sweeps_dir())
-        .update_tag(&dir_name, number, &text, &severity, &area)
+        .update_tag(&dir_name, number, &text, &severity, &area, &target)
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

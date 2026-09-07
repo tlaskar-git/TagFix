@@ -37,6 +37,8 @@ pub fn render_fixlist_md(sweep: &Sweep, dir_name: &str) -> String {
         live_tags(sweep).count()
     ));
     for tag in live_tags(sweep) {
+        // Schema v2 makes the crop optional; a quote tag has no rectangle.
+        let region = tag.region_or_zero();
         out.push_str(&format!("## Tag {:02}: {}\n\n", tag.number, first_line(&tag.text)));
         if tag.text.trim().lines().count() > 1 {
             out.push_str(tag.text.trim());
@@ -54,12 +56,12 @@ pub fn render_fixlist_md(sweep: &Sweep, dir_name: &str) -> String {
             tag.monitor_index,
             tag.screen_resolution,
             tag.dpi_scale,
-            tag.region.x,
-            tag.region.y,
-            tag.region.width,
-            tag.region.height
+            region.x,
+            region.y,
+            region.width,
+            region.height
         ));
-        out.push_str(&format!("![tag {:02}]({})\n\n", tag.number, tag.image));
+        out.push_str(&format!("![tag {:02}]({})\n\n", tag.number, tag.image_name()));
     }
     out
 }
@@ -117,6 +119,7 @@ pub fn render_brief_md(sweep: &Sweep, dir_name: &str) -> String {
 
     out.push_str("## Tasks\n\n");
     for (i, tag) in live_tags(sweep).enumerate() {
+        let region = tag.region_or_zero();
         out.push_str(&format!(
             "### Task {}: {}\n\n",
             i + 1,
@@ -130,11 +133,11 @@ pub fn render_brief_md(sweep: &Sweep, dir_name: &str) -> String {
             "- Severity: {} / Area: {}\n- Evidence: {} (region {},{} {}x{})\n",
             tag.severity,
             tag.area,
-            tag.image,
-            tag.region.x,
-            tag.region.y,
-            tag.region.width,
-            tag.region.height
+            tag.image_name(),
+            region.x,
+            region.y,
+            region.width,
+            region.height
         ));
         out.push_str(&format!("- Acceptance: {}\n\n", acceptance_for(tag)));
     }
@@ -170,6 +173,8 @@ where
     ));
 
     for tag in live_tags(sweep) {
+        // Schema v2 makes the crop optional; a quote tag has no rectangle.
+        let region = tag.region_or_zero();
         out.push_str("<section>\n");
         out.push_str(&format!(
             "<h2>Tag {:02}: {}</h2>\n",
@@ -193,12 +198,12 @@ where
             tag.monitor_index,
             escape_html(&tag.screen_resolution),
             tag.dpi_scale,
-            tag.region.x,
-            tag.region.y,
-            tag.region.width,
-            tag.region.height
+            region.x,
+            region.y,
+            region.width,
+            region.height
         ));
-        match load_image(&tag.image) {
+        match load_image(tag.image_name()) {
             Some(bytes) => {
                 out.push_str(&format!(
                     "<img alt=\"tag {:02}\" src=\"data:image/png;base64,{}\">\n",
@@ -209,7 +214,7 @@ where
             None => {
                 out.push_str(&format!(
                     "<p class=\"meta\">image {} missing at export time</p>\n",
-                    escape_html(&tag.image)
+                    escape_html(tag.image_name())
                 ));
             }
         }
@@ -243,11 +248,11 @@ mod tests {
     fn tag(number: u32, text: &str, severity: &str, area: &str, dropped: bool) -> Tag {
         Tag {
             number,
-            image: crate::store::tag_image_name(number),
+            image: Some(crate::store::tag_image_name(number)),
             captured_utc: "2026-08-13T10:00:00Z".into(),
             monitor_index: 1,
             dpi_scale: 1.5,
-            region: Rect { x: 100, y: 200, width: 300, height: 150 },
+            region: Some(Rect { x: 100, y: 200, width: 300, height: 150 }),
             window_title: "Helmsly - Settings".into(),
             process_name: "helmsly.exe".into(),
             screen_resolution: "2496x1664".into(),
@@ -255,6 +260,7 @@ mod tests {
             severity: severity.into(),
             area: area.into(),
             dropped,
+            ..Tag::default()
         }
     }
 
@@ -406,7 +412,7 @@ mod tests {
         for n in 1..=5 {
             let t = tag(n, &format!("issue {}", n), "medium", "layout", false);
             std::fs::write(
-                root.join(&name).join(&t.image),
+                root.join(&name).join(t.image_name()),
                 [137, 80, 78, 71, n as u8],
             )
             .unwrap();

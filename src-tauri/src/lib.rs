@@ -2,6 +2,8 @@
 // unit testable without the Tauri runtime.
 
 pub mod capture;
+pub mod context;
 pub mod export;
+pub mod quote;
 pub mod settings;
 pub mod store;
