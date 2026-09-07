@@ -1,5 +1,8 @@
-// Minimal DOM shim so ui/review.js can be exercised in Node. Not a browser:
-// only what review.js actually touches is implemented.
+// Minimal DOM shim so the one window's scripts can be exercised in Node.
+// Not a browser: only what app.js, review.js and settings.js actually touch
+// is implemented. All three run in one context, which is the page they now
+// share: a second top level `const { invoke }` would fail here as it would
+// in the window.
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
@@ -82,35 +85,26 @@ function textOf(node) {
   return out;
 }
 
-const byId = {};
-function make(id, tag, cls) {
-  const e = new El(tag || "div", id);
-  if (cls) e.className = cls;
-  byId[id] = e;
-  return e;
+// The elements come out of ui/app.html itself: every id in the file becomes
+// a shim element carrying that tag name and its starting classes. A renamed
+// or dropped id then fails here rather than silently in the window.
+function elementsFromHtml(file) {
+  const html = fs.readFileSync(path.join(REPO, file), "utf8");
+  const out = {};
+  const tagRe = /<([a-zA-Z][\w-]*)\b([^>]*)>/g;
+  let m;
+  while ((m = tagRe.exec(html)) !== null) {
+    const id = /\bid="([^"]+)"/.exec(m[2]);
+    if (!id) continue;
+    const el = new El(m[1], id[1]);
+    const cls = /\bclass="([^"]+)"/.exec(m[2]);
+    if (cls) el.className = cls[1];
+    out[id[1]] = el;
+  }
+  return out;
 }
 
-// Mirrors ui/review.html.
-make("sweep-select", "select");
-make("tag-list", "ul");
-make("status", "span");
-make("new-sweep-btn", "button");
-make("carry-btn", "button");
-make("export-btn", "button");
-make("copy-chat-btn", "button");
-make("copy-text-btn", "button");
-make("open-btn", "button");
-make("open-menu", "div", "menu hidden");
-make("save-btn", "button");
-make("save-menu", "div", "menu hidden");
-make("carry-panel", "section", "hidden");
-make("carry-source", "select");
-make("carry-list", "ul");
-make("carry-do", "button");
-make("carry-close", "button");
-make("carry-status", "span");
-make("lightbox", "div", "hidden");
-make("lightbox-image", "img");
+const byId = elementsFromHtml("ui/app.html");
 
 const regionTag = {
   number: 1, kind: "region", image: "tag-01.png", contextImage: "tag-01-context.png",
@@ -137,6 +131,7 @@ const carriedTag = {
 const calls = [];
 const listeners = {};
 const clipboard = [];
+const sweeps = [["2026-09-07-round-98", 3], ["2026-09-01-round-97", 2]];
 
 const sandbox = {
   console,
@@ -152,6 +147,9 @@ const sandbox = {
   },
   window: {
     addEventListener: (n, fn) => ((listeners["window:" + n] = listeners["window:" + n] || []).push(fn)),
+    // app.js keeps the current section in the hash, so a reload comes back
+    // to it. The shim stores it; nothing here reacts to the write.
+    location: { hash: "" },
     __TAURI__: {
       core: {
         invoke: (name, args) => {
@@ -160,7 +158,14 @@ const sandbox = {
             return Promise.resolve({ targets: [{ name: "helmsly" }, { name: "slobal.com" }, { name: "  " }] });
           }
           if (name === "list_sweeps") {
-            return Promise.resolve([["2026-09-07-round-98", 3], ["2026-09-01-round-97", 2]]);
+            return Promise.resolve(sweeps.map((s) => s.slice()));
+          }
+          if (name === "create_sweep") {
+            // The backend dates and slugs the name; this is enough of that
+            // to prove the selector follows what was created.
+            const dir = "2026-09-08-" + args.name.trim().toLowerCase().replace(/\s+/g, "-");
+            sweeps.unshift([dir, 0]);
+            return Promise.resolve(dir);
           }
           if (name === "load_sweep") {
             return Promise.resolve({ tags: [regionTag, quoteTag, carriedTag] });
@@ -192,9 +197,13 @@ const sandbox = {
 sandbox.window.window = sandbox.window;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(REPO, "ui/review.js"), "utf8"), sandbox, {
-  filename: "review.js",
-});
+// Load order matters: this is the order app.html lists them in. All three
+// share one context, so a redeclaration would throw right here.
+for (const file of ["ui/review.js", "ui/settings.js", "ui/app.js"]) {
+  vm.runInContext(fs.readFileSync(path.join(REPO, file), "utf8"), sandbox, {
+    filename: path.basename(file),
+  });
+}
 
 let failures = 0;
 function check(label, cond, extra) {
@@ -213,6 +222,27 @@ function tick(fn) { setTimeout(fn, 15); }
 const rows = () => byId["tag-list"].children;
 
 tick(() => {
+  // 0. The shell: sections switch client side, and the hash follows so a
+  //    reload comes back to the section that was showing.
+  const active = (id) => byId[id].classList.contains("active");
+  check("opens on review", active("section-review") && active("nav-review") &&
+    !active("section-settings"), sandbox.window.location.hash);
+  check("the hash names the section", sandbox.window.location.hash === "#review",
+    sandbox.window.location.hash);
+  byId["nav-settings"].fire("click");
+  check("the sidebar switches sections",
+    active("section-settings") && active("nav-settings") && !active("section-review"));
+  check("switching updates the hash", sandbox.window.location.hash === "#settings",
+    sandbox.window.location.hash);
+  for (const fn of listeners["show-section"] || []) fn({ payload: "help" });
+  check("show-section switches the window",
+    active("section-help") && sandbox.window.location.hash === "#help",
+    sandbox.window.location.hash);
+  for (const fn of listeners["show-section"] || []) fn({ payload: "nonsense" });
+  check("an unknown section falls back to review",
+    active("section-review") && sandbox.window.location.hash === "#review",
+    sandbox.window.location.hash);
+
   // 1. Boot: settings for the target list, the sweep list and the tags.
   check("asks for settings targets", calls.some((c) => c[0] === "get_settings"));
   check("lists sweeps", calls.some((c) => c[0] === "list_sweeps"));
@@ -329,12 +359,7 @@ tick(() => {
                     byId["status"].textContent.indexOf("D:/repos/helmsly/qa/2026-09-07-round-98") >= 0,
                     byId["status"].textContent);
 
-                  // 8. New sweep opens the Phase B prompt window.
-                  byId["new-sweep-btn"].fire("click");
-                  check("New sweep opens the prompt window",
-                    calls.some((c) => c[0] === "new_sweep_prompt"));
-
-                  // 9. Carry forward: earlier sweeps only, ticked numbers sent.
+                  // 8. Carry forward: earlier sweeps only, ticked numbers sent.
                   byId["carry-btn"].fire("click");
                   tick(() => {
                     check("carry panel opens", !byId["carry-panel"].classList.contains("hidden"));
@@ -361,7 +386,7 @@ tick(() => {
                       check("carry reloads the rows",
                         callsNamed("load_sweep").length >= 2);
 
-                      // 10. A sweeps-changed event refreshes the selector.
+                      // 9. A sweeps-changed event refreshes the selector.
                       const before = callsNamed("list_sweeps").length;
                       for (const fn of listeners["sweeps-changed"] || []) {
                         fn({ payload: "2026-09-01-round-97" });
@@ -373,10 +398,36 @@ tick(() => {
                           byId["sweep-select"].value === "2026-09-01-round-97",
                           byId["sweep-select"].value);
 
-                        console.log(failures === 0
-                          ? "\nALL REVIEW CHECKS PASSED"
-                          : "\n" + failures + " REVIEW CHECKS FAILED");
-                        process.exit(failures === 0 ? 0 : 1);
+                        // 10. New sweep is an inline control now: an empty
+                        //     name is refused, Enter in the box creates.
+                        byId["new-sweep-btn"].fire("click");
+                        tick(() => {
+                          check("New sweep with no name asks for one",
+                            !calls.some((c) => c[0] === "create_sweep") &&
+                            byId["status"].textContent === "give the sweep a name",
+                            byId["status"].textContent);
+
+                          byId["new-sweep-name"].value = "  round 99  ";
+                          byId["new-sweep-name"].fire("keydown", { key: "Enter", preventDefault() {} });
+                          tick(() => {
+                            check("Enter creates the sweep with the typed name",
+                              JSON.stringify(lastCall("create_sweep")) ===
+                                JSON.stringify({ name: "round 99" }), lastCall("create_sweep"));
+                            check("the name box is cleared",
+                              byId["new-sweep-name"].value === "", byId["new-sweep-name"].value);
+                            check("the selector moves to the new sweep",
+                              byId["sweep-select"].value === "2026-09-08-round-99",
+                              byId["sweep-select"].value);
+                            check("the status names the new sweep",
+                              byId["status"].textContent === "created 2026-09-08-round-99",
+                              byId["status"].textContent);
+
+                            console.log(failures === 0
+                              ? "\nALL REVIEW CHECKS PASSED"
+                              : "\n" + failures + " REVIEW CHECKS FAILED");
+                            process.exit(failures === 0 ? 0 : 1);
+                          });
+                        });
                       });
                     });
                   });

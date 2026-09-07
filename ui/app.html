@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TagFix</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <nav id="sidebar">
+    <div class="brand">TagFix</div>
+    <button class="nav-item" id="nav-review" data-section="review">Review</button>
+    <button class="nav-item" id="nav-settings" data-section="settings">Settings</button>
+    <button class="nav-item" id="nav-help" data-section="help">How to use</button>
+  </nav>
+
+  <main id="content">
+
+    <section id="section-review" class="section">
+      <header>
+        <h1>Review and export</h1>
+        <div id="toolbar">
+          <select id="sweep-select"></select>
+          <span class="new-sweep-wrap">
+            <input id="new-sweep-name" type="text" spellcheck="false"
+              placeholder="new sweep name">
+            <button id="new-sweep-btn">New sweep</button>
+          </span>
+          <button id="carry-btn">Carry forward</button>
+          <button id="export-btn">Export</button>
+          <button id="copy-chat-btn">Copy for chat</button>
+          <button id="copy-text-btn">Copy as text</button>
+          <span class="menu-wrap">
+            <button id="open-btn">Open</button>
+            <div id="open-menu" class="menu hidden"></div>
+          </span>
+          <span class="menu-wrap">
+            <button id="save-btn">Save as</button>
+            <div id="save-menu" class="menu hidden"></div>
+          </span>
+          <span id="status"></span>
+        </div>
+      </header>
+
+      <section id="carry-panel" class="hidden">
+        <div class="carry-head">
+          <span>Carry forward from</span>
+          <select id="carry-source"></select>
+          <button id="carry-do">Carry</button>
+          <button id="carry-close">Close</button>
+          <span id="carry-status"></span>
+        </div>
+        <ul id="carry-list"></ul>
+      </section>
+
+      <p id="hint">Type a name beside New sweep to start a fresh sweep. Drag
+        rows to reorder. Click text to edit. Click a thumbnail to enlarge it.
+        Dropped tags stay in the sweep file and can be picked back up.</p>
+      <ul id="tag-list"></ul>
+    </section>
+
+    <section id="section-settings" class="section">
+      <h1>Settings</h1>
+      <label>
+        Arm hotkey
+        <input id="hotkey" type="text" spellcheck="false"
+          placeholder="ctrl+shift+t">
+        <small>Modifiers joined with plus, for example ctrl+alt+f9</small>
+      </label>
+      <label>
+        Quote hotkey
+        <input id="quote-hotkey" type="text" spellcheck="false"
+          placeholder="ctrl+shift+q">
+        <small>Turns the current highlight into a quote tag</small>
+      </label>
+      <label>
+        Attach hotkey
+        <input id="attach-hotkey" type="text" spellcheck="false"
+          placeholder="ctrl+shift+a">
+        <small>The next drag attaches a comparison crop to the last tag</small>
+      </label>
+      <label>
+        Output directory
+        <input id="output-dir" type="text" spellcheck="false"
+          placeholder="blank = sweeps folder next to tagfix.exe">
+      </label>
+      <label class="check">
+        <input id="launch-login" type="checkbox">
+        Launch at login (current user only)
+      </label>
+      <label class="check">
+        <input id="show-pen-chip" type="checkbox">
+        Show the pen chip after a highlight
+      </label>
+      <label class="check">
+        <input id="quote-screenshot" type="checkbox">
+        Also save a screenshot of the window with a quote tag
+      </label>
+      <label class="check">
+        <input id="context-frame" type="checkbox">
+        Save a context frame beside every region crop
+      </label>
+      <label class="check">
+        <input id="new-sweep-each-day" type="checkbox">
+        Start a new sweep on the first capture of each day
+      </label>
+
+      <h2>Targets</h2>
+      <p class="note">
+        Which product a tag is about, matched on the URL host. A host matches a
+        pattern exactly or as a subdomain of it. The export directory receives a
+        copy of that target's evidence at export time; leave it blank for none.
+      </p>
+      <table id="targets">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Hosts (comma separated)</th>
+            <th>Export directory</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="targets-body"></tbody>
+      </table>
+      <button id="add-target-btn" class="secondary">Add target</button>
+
+      <div id="settings-actions">
+        <button id="settings-save-btn">Save</button>
+        <span id="settings-status"></span>
+      </div>
+    </section>
+
+    <section id="section-help" class="section">
+      <h1>TagFix</h1>
+      <p class="tagline">Tag what is wrong on screen, get a fix list out.</p>
+
+      <h2>Controls</h2>
+      <table>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td>
+            <td>Arm or disarm (changeable in Settings)</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+drag</td>
+            <td>While armed: mark a region to tag</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td>
+            <td>While armed: the next plain drag marks a region, no keys held.
+              Easier on a laptop trackpad</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd></td>
+            <td>While armed: turn the text you just highlighted into a quote
+              tag (changeable in Settings)</td></tr>
+        <tr><td>pen chip</td>
+            <td>The small round pen button that appears below right of a
+              highlight for four seconds. Clicking it does the same as
+              <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>. The click never
+              reaches the app underneath, so your selection survives. Turn it
+              off in Settings</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td>
+            <td>While armed: the next drag attaches a comparison crop to the
+              tag you just saved (changeable in Settings)</td></tr>
+        <tr><td><kbd>Enter</kbd></td>
+            <td>Save the tag and hand the screen straight back to you</td></tr>
+        <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td>
+            <td>Newline inside the tag text</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Up</kbd></td>
+            <td>In the popover: recall the note and the chips from your last
+              save, to edit rather than retype</td></tr>
+        <tr><td><kbd>Esc</kbd></td>
+            <td>Cancel the tag you are typing</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td>
+            <td>Open this window at Review and export</td></tr>
+      </table>
+
+      <h2>The tray icon</h2>
+      <p>TagFix lives in the system tray and has one window, this one, with
+        three sections in the sidebar: Review, Settings and How to use.</p>
+      <table>
+        <tr><td>double click</td>
+            <td>Open the window at Review and export</td></tr>
+        <tr><td>right click</td>
+            <td>The menu: Arm / disarm, Quote highlight, Review and export,
+              Settings, How to use, Open sweeps folder, Quit</td></tr>
+        <tr><td>single left click</td>
+            <td>Nothing, so the first click of a double click does not pop the
+              menu</td></tr>
+      </table>
+      <p>Closing this window only hides it, so reopening is instant and a
+        Capture after you started keeps working while you drag on screen.
+        Quit in the tray menu is what exits TagFix.</p>
+
+      <h2>The flow</h2>
+      <ol>
+        <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>.
+          <strong>Keep working normally:</strong> armed is a quiet standby
+          state, marked only by a thin frame at the edge of the screen. Your
+          clicks, typing, and scrolling all behave exactly as usual.</li>
+        <li><strong>Something looks wrong:</strong> hold
+          <kbd>Ctrl</kbd>+<kbd>Shift</kbd> and drag a box around it with the
+          left mouse button. On a trackpad, where holding two keys through a
+          click is awkward, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
+          instead: a short DRAG NOW prompt appears and your next ordinary drag
+          marks the region.</li>
+        <li><strong>Something reads wrong:</strong> highlight the text as you
+          would before a copy. The pen chip appears beside it; click it, or
+          press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>. The popover
+          opens with the quote in a scrollable block above the note box. No
+          screenshot is taken unless you turn that on in Settings.</li>
+        <li>Type what is wrong, and pick severity (high, medium, low), area
+          (layout, copy, a11y, behaviour, other) and target (which product
+          this is about) or keep the defaults. The target is preselected from
+          the page address when TagFix can read it. The note box
+          spellchecks. <kbd>Ctrl</kbd>+<kbd>Up</kbd> brings back your last
+          note and chips.</li>
+        <li>Press <kbd>Enter</kbd>. The tag is saved and the screen is yours
+          again, still armed. To add a second crop to that same tag, a before
+          and after or a comparison, press
+          <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> and drag: the crop
+          joins the tag instead of starting a new one.</li>
+        <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> again to
+          disarm. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+drag then does nothing.</li>
+        <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> for the Review
+          section: drag rows to reorder, click text to edit, click a thumbnail
+          to enlarge it, drop what you do not want. <strong>New sweep</strong>
+          starts a fresh one: type a name in the box beside the button and
+          press Enter. <strong>Carry forward</strong> copies tags out of an
+          earlier sweep into this one as re-reports, keeping the original
+          picture; a carried row then offers <strong>Capture after</strong>,
+          which takes one fresh crop and stores it beside the original.</li>
+      </ol>
+      <p>Only <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+left click and a click on the
+        pen chip are taken while armed. Every other key and click,
+        <kbd>Esc</kbd> included, goes to your own apps untouched.</p>
+
+      <h2>Getting it out</h2>
+      <p><strong>Copy for chat</strong> puts the whole sweep on the clipboard
+        as Markdown, ready to paste into a chat window; <strong>Copy as
+        text</strong> does the same without the Markdown syntax. Neither needs
+        an export first. <strong>Open</strong> opens any of the five files in
+        its default app, <strong>Save as</strong> writes one wherever you
+        choose, and <strong>Export</strong> writes all five into the sweep
+        folder and copies a pointer to brief.md to the clipboard:</p>
+      <table>
+        <tr><td><code>fixlist.md</code></td><td>the full evidence ledger</td></tr>
+        <tr><td><code>fixlist.html</code></td>
+            <td>the same, single file, images inlined, opens offline</td></tr>
+        <tr><td><code>brief.md</code></td>
+            <td>agent brief, one task and acceptance criterion per tag,
+              grouped by target</td></tr>
+        <tr><td><code>feedback.md</code></td><td>the chat ready sheet</td></tr>
+        <tr><td><code>feedback.txt</code></td><td>the same in plain text</td></tr>
+      </table>
+      <p>If a target has an export directory set in Settings, Export also
+        drops that target's own tags and images into a folder there, named
+        after the sweep.</p>
+
+      <h2>Where things live</h2>
+      <p>Sweeps land in a <code>sweeps</code> folder next to tagfix.exe, one
+        folder per sweep with sweep.json plus the PNGs. Change the location in
+        the Settings section. <code>sweeps/active.txt</code> names the sweep
+        currently being written to.</p>
+      <table>
+        <tr><td><code>tag-NN.png</code></td><td>the crop</td></tr>
+        <tr><td><code>tag-NN-context.png</code></td>
+            <td>the whole window at reduced size with the crop outlined in
+              red, so the crop can be placed later</td></tr>
+        <tr><td><code>tag-NN-a1.png</code></td>
+            <td>an attachment (a2, a3 and so on for the next ones)</td></tr>
+        <tr><td><code>tag-NN-before.png</code></td>
+            <td>the original picture of a carried tag</td></tr>
+        <tr><td><code>tag-NN-quote.png</code></td>
+            <td>the optional window screenshot of a quote tag</td></tr>
+      </table>
+
+      <h2>Known limits</h2>
+      <ul>
+        <li>A quote tag is read by borrowing the clipboard for a moment.
+          TagFix puts your text back afterwards, but it cannot put back an
+          image or a copied file: if that is what was on the clipboard, it is
+          gone.</li>
+        <li>In a terminal with nothing selected, Ctrl+C is an interrupt. The
+          quote gesture is deliberate for that reason: highlight first.</li>
+        <li>The page address is read from Chrome, Edge and Firefox only.
+          Anywhere else the URL stays empty, and so does the target unless you
+          pick one yourself.</li>
+      </ul>
+
+      <h2>Command line</h2>
+      <table>
+        <tr><td><code>tagfix sweep new &lt;slug&gt;</code></td>
+            <td>Create a sweep folder for today</td></tr>
+        <tr><td><code>tagfix sweep list</code></td>
+            <td>List sweeps with tag counts</td></tr>
+        <tr><td><code>tagfix diag</code></td>
+            <td>Print a machine report (WebView2, monitors, hotkeys) and write
+              tagfix-diag.txt; send this if something misbehaves</td></tr>
+      </table>
+
+      <p class="footer">Reopen this window any time: double click the tray
+        icon, or pick a section from the tray menu.</p>
+    </section>
+
+  </main>
+
+  <div id="lightbox" class="hidden"><img id="lightbox-image" alt="enlarged evidence"></div>
+
+  <!-- The shell goes last on purpose: it is the script that reports the
+       page ready in the runtime log, so that line only appears once the
+       section scripts have parsed and run. -->
+  <script src="review.js"></script>
+  <script src="settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -277,3 +277,48 @@ state, exactly like region tags.
    interrupt in a terminal, and TagFix says "nothing highlighted". That is
    the documented cost of the gesture. Highlight text in the terminal
    first and it quotes cleanly instead.
+
+## Round 03 (v0.4.0): one window, tray double click
+
+1. Double click the tray icon. Expect: one window titled TagFix opens with
+   a sidebar (Review, Settings, How to use) and the Review section
+   showing. Proof: tagfix-runtime.log has
+   `tray: left double click, opening the window at review` followed by
+   `main window: created at review` and `main window: page ready at review`.
+2. Single left click the tray icon. Expect: nothing at all. No menu, no
+   window. That is what makes the double click usable.
+3. Right click the tray icon. Expect the menu, in this order: Arm /
+   disarm (Ctrl+Shift+T), Quote highlight (Ctrl+Shift+Q), Review and
+   export (Ctrl+Shift+R), Settings, How to use, Open sweeps folder, Quit.
+   There is no New sweep item any more.
+4. Each item lands on its own section: pick Settings, expect the window at
+   Settings; pick How to use, expect it at How to use; pick Review and
+   export, expect it back at Review. Press `Ctrl+Shift+R`, expect Review.
+   Proof: `main window: shown at <section>` in tagfix-runtime.log each
+   time, and the sidebar item for that section is highlighted.
+5. Click each sidebar item in turn. Expect: the section changes with no
+   flicker and no second window, and each section keeps its state (the
+   sweep you had selected in Review is still selected after a trip to
+   Settings and back).
+6. Hash survives a reload: switch to Settings, then press F5 or
+   Ctrl+R inside the window. Expect: it comes back on Settings, not on
+   Review, because the address ends in `#settings`.
+7. Close the window with its X. Expect: the window disappears, TagFix
+   keeps running, the tray icon is still there and arming still works.
+   Proof: `main window: close request, hidden instead`. Double click the
+   tray icon again: the window is back instantly, with the same sweep
+   selected and the same section showing, and the runtime log says
+   `main window: shown at review` rather than `created`.
+8. Capture after across a close: in Review, on a carried tag, press
+   Capture after, close the window with its X, and drag a box on screen.
+   Expect: the crop lands on that tag as an `after` attachment. Reopen the
+   window: the row shows before and after.
+9. Inline New sweep: in Review, type a name in the box beside New sweep
+   and press Enter. Expect: no prompt window opens, the sweep selector
+   moves to the new `<date>-<slug>` sweep, the status line says
+   `created <that name>` and the box is empty again. Press New sweep with
+   the box empty. Expect: the status says `give the sweep a name` and no
+   sweep is created. Proof: `sweep: created <name>` in tagfix-runtime.log
+   and the folder on disk.
+10. Quit still exits: tray menu, Quit. Expect: the process ends and the
+    tray icon disappears, even though closing the window only hid it.

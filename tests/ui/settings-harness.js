@@ -1,5 +1,6 @@
 // Same shim idea, aimed at ui/settings.js: the save payload must carry
-// every field, including the ones this window does not edit.
+// every field, including the ones this section does not edit. app.js runs
+// alongside it, because that is the page settings.js lives on now.
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
@@ -38,10 +39,25 @@ class El {
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
 }
 
-const byId = {};
-for (const id of ["hotkey", "quote-hotkey", "attach-hotkey", "output-dir", "launch-login",
-  "show-pen-chip", "quote-screenshot", "context-frame", "new-sweep-each-day",
-  "targets-body", "status", "add-target-btn", "save-btn"]) byId[id] = new El("div", id);
+// The elements come out of ui/app.html itself, so a renamed or dropped id
+// fails here rather than silently in the window.
+function elementsFromHtml(file) {
+  const html = fs.readFileSync(path.join(REPO, file), "utf8");
+  const out = {};
+  const tagRe = /<([a-zA-Z][\w-]*)\b([^>]*)>/g;
+  let m;
+  while ((m = tagRe.exec(html)) !== null) {
+    const id = /\bid="([^"]+)"/.exec(m[2]);
+    if (!id) continue;
+    const el = new El(m[1], id[1]);
+    const cls = /\bclass="([^"]+)"/.exec(m[2]);
+    if (cls) el.className = cls[1];
+    out[id[1]] = el;
+  }
+  return out;
+}
+
+const byId = elementsFromHtml("ui/app.html");
 
 const stored = {
   hotkey: "ctrl+shift+t", outputDir: null, launchAtLogin: false,
@@ -55,18 +71,30 @@ const stored = {
 };
 
 const calls = [];
+const listeners = {};
 const sandbox = {
   console, setTimeout, clearTimeout,
   document: { getElementById: (id) => byId[id] || null, createElement: (t) => new El(t) },
-  window: { __TAURI__: { core: { invoke: (name, args) => {
-    calls.push([name, args]);
-    if (name === "get_settings") return Promise.resolve(JSON.parse(JSON.stringify(stored)));
-    return Promise.resolve(null);
-  } } } },
+  window: {
+    addEventListener: (n, fn) => ((listeners["window:" + n] = listeners["window:" + n] || []).push(fn)),
+    location: { hash: "" },
+    __TAURI__: {
+      core: { invoke: (name, args) => {
+        calls.push([name, args]);
+        if (name === "get_settings") return Promise.resolve(JSON.parse(JSON.stringify(stored)));
+        return Promise.resolve(null);
+      } },
+      event: { listen: (name, fn) => ((listeners[name] = listeners[name] || []).push(fn)) },
+    },
+  },
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(REPO, "ui/settings.js"), "utf8"), sandbox, { filename: "settings.js" });
+for (const file of ["ui/settings.js", "ui/app.js"]) {
+  vm.runInContext(fs.readFileSync(path.join(REPO, file), "utf8"), sandbox, {
+    filename: path.basename(file),
+  });
+}
 
 let failures = 0;
 function check(label, cond, extra) {
@@ -75,6 +103,11 @@ function check(label, cond, extra) {
 }
 
 setTimeout(() => {
+  // The tray Settings item lands here through show-section.
+  for (const fn of listeners["show-section"] || []) fn({ payload: "settings" });
+  check("show-section opens the settings section",
+    byId["section-settings"].classList.contains("active") &&
+    sandbox.window.location.hash === "#settings", sandbox.window.location.hash);
   check("every field loads", byId["quote-hotkey"].value === "ctrl+shift+q" &&
     byId["attach-hotkey"].value === "ctrl+shift+a" && byId["show-pen-chip"].checked === true &&
     byId["context-frame"].checked === true && byId["quote-screenshot"].checked === false);
@@ -95,7 +128,7 @@ setTimeout(() => {
   byId["quote-screenshot"].checked = true;
   byId["new-sweep-each-day"].checked = true;
   byId["quote-hotkey"].value = "ctrl+alt+q";
-  byId["save-btn"].fire("click");
+  byId["settings-save-btn"].fire("click");
 
   setTimeout(() => {
     const sent = calls.filter((c) => c[0] === "save_settings").pop();
@@ -111,7 +144,7 @@ setTimeout(() => {
     check("hosts split and trimmed",
       JSON.stringify(s.targets[1].hosts) === JSON.stringify(["agncred.com", "www.agncred.com"]), s.targets[1].hosts);
     check("a blank export directory is null", s.targets[1].exportDir === null);
-    check("status says saved", byId["status"].textContent === "saved");
+    check("status says saved", byId["settings-status"].textContent === "saved");
     console.log(failures === 0 ? "\nALL SETTINGS CHECKS PASSED" : "\n" + failures + " SETTINGS CHECKS FAILED");
     process.exit(failures === 0 ? 0 : 1);
   }, 10);

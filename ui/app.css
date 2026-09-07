@@ -1,0 +1,567 @@
+/* The one window: a sidebar and three sections. This sheet is the round 02
+   review.css, settings.css and help.css merged, with each of their element
+   selectors scoped to its own section so the three cannot collide. */
+
+body {
+  margin: 0;
+  background: #17171a;
+  color: #ececee;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 14px;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar */
+
+#sidebar {
+  width: 156px;
+  flex: none;
+  box-sizing: border-box;
+  background: #1b1b1f;
+  border-right: 1px solid #2a2a2e;
+  padding: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand {
+  color: #e5484d;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 0 16px 12px;
+}
+
+.nav-item {
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  color: #b8b8bd;
+  text-align: left;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: #232327;
+}
+
+.nav-item.active {
+  background: #232327;
+  border-left-color: #e5484d;
+  color: #ececee;
+}
+
+/* Sections. Only the active one is in the layout, so a hidden section
+   cannot steal scroll height or tab stops. */
+
+#content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.section {
+  display: none;
+  padding: 0 20px 40px;
+}
+
+.section.active {
+  display: block;
+}
+
+#content h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+#content select,
+#content button,
+#content input[type="text"] {
+  background: #2a2a2e;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+#content button {
+  cursor: pointer;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Review */
+
+#section-review header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 14px;
+  flex-wrap: wrap;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* New sweep is an inline control now: a name beside the button, Enter or
+   Create makes the sweep. */
+.new-sweep-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#new-sweep-name {
+  width: 170px;
+}
+
+#export-btn {
+  background: #e5484d;
+  border-color: #e5484d;
+}
+
+#status {
+  color: #8b8b90;
+  font-size: 12px;
+}
+
+/* Open and Save as are small dropdowns: one item per rendering. */
+.menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  background: #232327;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  padding: 4px;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* .menu sets display after .hidden does, so the hidden state needs the
+   more specific rule or both dropdowns sit open from the first paint. */
+.menu.hidden {
+  display: none;
+}
+
+#content .menu-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.menu-item:hover {
+  background: #33333a;
+}
+
+#hint {
+  color: #8b8b90;
+  font-size: 12px;
+}
+
+/* Carry forward panel: an earlier sweep and its tags, ticked. */
+#carry-panel {
+  border: 1px solid #3a3a3f;
+  border-radius: 6px;
+  background: #1f1f23;
+  padding: 10px;
+  margin-top: 10px;
+  max-width: 900px;
+}
+
+.carry-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#carry-status {
+  color: #8b8b90;
+  font-size: 12px;
+}
+
+#carry-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.carry-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #2a2a2e;
+}
+
+.carry-label {
+  flex: 1;
+}
+
+.carry-thumb {
+  height: 34px;
+  border: 1px solid #3a3a3f;
+  border-radius: 3px;
+}
+
+#tag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 1000px;
+}
+
+.tag-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #1f1f23;
+  border: 1px solid #303036;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.tag-row.dragging {
+  opacity: 0.4;
+}
+
+.tag-row.dropped-row {
+  opacity: 0.45;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #6b6b70;
+  user-select: none;
+  padding-top: 2px;
+}
+
+.tag-number {
+  color: #8b8b90;
+  min-width: 52px;
+}
+
+/* Evidence column: crop or quote, then context, before, after and
+   comparisons as smaller labelled thumbnails. */
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 190px;
+  flex: none;
+}
+
+.thumb {
+  margin: 0;
+}
+
+.thumb img {
+  max-width: 100%;
+  max-height: 120px;
+  border: 1px solid #3a3a3f;
+  border-radius: 3px;
+  cursor: zoom-in;
+  display: block;
+}
+
+.thumb.small img {
+  max-height: 70px;
+}
+
+.thumb figcaption {
+  color: #8b8b90;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.thumb .missing-note {
+  color: #6b6b70;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.quote-thumb {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 3px solid #6b6b70;
+  background: #26262b;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.re-report {
+  color: #8b8b90;
+  font-size: 11px;
+  font-style: italic;
+}
+
+#content .after-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.tag-body {
+  flex: 1;
+}
+
+.tag-text {
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+.tag-text.empty {
+  color: #6b6b70;
+  font-style: italic;
+}
+
+.tag-body textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #2a2a2e;
+  color: #ececee;
+  border: 1px solid #3a3a3f;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px;
+}
+
+.tag-meta {
+  color: #8b8b90;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.row-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+#content .row-controls select {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+#content .drop-btn {
+  font-size: 12px;
+}
+
+/* Lightbox: a plain fixed overlay, Esc or a click closes it. It sits
+   outside the sections because it covers the whole window. */
+#lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.85);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  display: flex;
+}
+
+#lightbox.hidden {
+  display: none;
+}
+
+#lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  cursor: zoom-out;
+}
+
+/* Settings */
+
+#section-settings {
+  padding-top: 14px;
+  max-width: 620px;
+}
+
+#section-settings h2 {
+  font-size: 14px;
+  margin: 20px 0 6px;
+}
+
+#section-settings .note {
+  margin: 0 0 10px;
+  color: #6b6b70;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+#section-settings label {
+  display: block;
+  margin-bottom: 14px;
+  color: #b8b8bd;
+}
+
+#section-settings label input[type="text"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 7px;
+}
+
+#section-settings label small {
+  display: block;
+  color: #6b6b70;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+#section-settings .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ececee;
+}
+
+#targets {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+#targets th {
+  text-align: left;
+  color: #8b8b90;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 0 6px 4px 0;
+}
+
+#targets td {
+  padding: 0 6px 6px 0;
+  vertical-align: top;
+}
+
+#targets input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px;
+  font-size: 12px;
+}
+
+#content button.secondary {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+#settings-actions {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#content #settings-save-btn {
+  background: #e5484d;
+  color: #fff;
+  border-color: #e5484d;
+  padding: 7px 18px;
+}
+
+#settings-status {
+  color: #8b8b90;
+  font-size: 12px;
+}
+
+/* How to use */
+
+#section-help {
+  padding: 22px 28px 40px;
+  line-height: 1.5;
+  max-width: 760px;
+}
+
+#content #section-help h1 {
+  font-size: 22px;
+}
+
+#section-help .tagline {
+  color: #e5484d;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+#section-help h2 {
+  font-size: 15px;
+  margin: 20px 0 8px;
+  color: #b8b8bd;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+#section-help table {
+  border-collapse: collapse;
+}
+
+#section-help td {
+  padding: 3px 14px 3px 0;
+  vertical-align: top;
+}
+
+#section-help kbd {
+  background: #2a2a2e;
+  border: 1px solid #3a3a3f;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+
+#section-help code {
+  background: #2a2a2e;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+#section-help ol,
+#section-help ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+#section-help li {
+  margin-bottom: 6px;
+}
+
+#section-help .footer {
+  margin-top: 22px;
+  color: #8b8b90;
+  font-size: 12px;
+}

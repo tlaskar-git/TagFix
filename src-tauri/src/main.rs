@@ -9,7 +9,7 @@ use tagfix::capture;
 
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -40,7 +40,7 @@ struct PendingTag {
 }
 
 /// Where the next crop goes when it is an attachment rather than a new
-/// tag: Ctrl+Shift+A (a comparison) or the review window's Capture after.
+/// tag: Ctrl+Shift+A (a comparison) or the Review section's Capture after.
 /// `sweep_name` is None when the caller means "whichever sweep is active".
 #[derive(Clone)]
 struct AttachTarget {
@@ -78,6 +78,10 @@ struct AppState {
     /// CSS rectangle the overlay reports converts back to screen pixels.
     chip_monitor: Mutex<Option<((i32, i32), f64)>>,
 }
+
+/// Label of the one window that holds review, settings and the guide. The
+/// overlay is the only other window TagFix ever creates.
+const MAIN_WINDOW: &str = "main";
 
 fn now_utc() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
@@ -774,7 +778,7 @@ fn handle_selection_end(app: &AppHandle, ctx: ArmContext, start: (i32, i32), end
         );
         return;
     }
-    // Armed by Ctrl+Shift+A or by the review window: this crop belongs to a
+    // Armed by Ctrl+Shift+A or by the Review section: this crop belongs to a
     // tag that already exists.
     let attach = {
         let st: State<AppState> = app.state();
@@ -1038,6 +1042,13 @@ fn ui_loaded() {
     rt_log("overlay page loaded (JS booted)");
 }
 
+/// The one window's shell calls this once it has a section on screen, so
+/// the runtime log says the page loaded and which section it opened on.
+#[tauri::command]
+fn main_window_ready(section: String) {
+    rt_log(&format!("main window: page ready at {}", section));
+}
+
 fn toggle_armed(app: &AppHandle) {
     let armed = {
         let state: State<AppState> = app.state();
@@ -1177,8 +1188,8 @@ fn get_last_note(state: State<AppState>) -> Option<LastNote> {
 }
 
 /// Arm a one shot capture whose crop joins an existing tag instead of
-/// starting a new one. Used by Ctrl+Shift+A ("compare") and by the review
-/// window's Capture after button ("after").
+/// starting a new one. Used by Ctrl+Shift+A ("compare") and by the Review
+/// section's Capture after button ("after").
 #[tauri::command]
 fn attach_next_capture(app: AppHandle, number: u32, label: String) -> Result<(), String> {
     let armed = {
@@ -1187,7 +1198,7 @@ fn attach_next_capture(app: AppHandle, number: u32, label: String) -> Result<(),
         v
     };
     if !armed {
-        // The review window can ask for this with the app disarmed; the
+        // The Review section can ask for this with the app disarmed; the
         // operator meant to capture, so arm rather than refuse.
         apply_armed(&app, true);
     }
@@ -1225,15 +1236,6 @@ fn create_sweep(app: AppHandle, name: String) -> Result<String, String> {
     rt_log(&format!("sweep: created {}", dir_name));
     let _ = app.emit("sweeps-changed", dir_name.clone());
     Ok(dir_name)
-}
-
-/// The new sweep prompt closes itself through here, so the window keeps no
-/// capability of its own.
-#[tauri::command]
-fn close_new_sweep(app: AppHandle) {
-    if let Some(w) = app.get_webview_window("newsweep") {
-        let _ = w.close();
-    }
 }
 
 #[tauri::command]
@@ -1348,7 +1350,7 @@ fn open_export(dir_name: String, file_name: String) -> Result<String, String> {
     let dir = sweeps_dir().join(&dir_name);
     let path = dir.join(&file_name);
     let modified = |p: &std::path::Path| p.metadata().and_then(|m| m.modified()).ok();
-    // Stale means "older than sweep.json", so an edit in the review window
+    // Stale means "older than sweep.json", so an edit in the Review section
     // is never opened as yesterday's rendering.
     let stale = match (modified(&path), modified(&dir.join("sweep.json"))) {
         (Some(file), Some(sweep)) => file < sweep,
@@ -1475,13 +1477,6 @@ fn carry_forward(
     Ok(carried)
 }
 
-/// The review window's New sweep button opens the same prompt the tray
-/// item does, so there is one way to name a sweep.
-#[tauri::command]
-fn new_sweep_prompt(app: AppHandle) {
-    open_new_sweep(&app);
-}
-
 #[tauri::command]
 fn get_settings() -> Settings {
     settings::load(&exe_dir())
@@ -1548,57 +1543,54 @@ fn save_settings(app: AppHandle, new_settings: Settings) -> Result<(), String> {
     Ok(())
 }
 
-fn open_settings(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("settings") {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
-    }
-    let _ = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("TagFix settings")
-        // Round 02 added a screenful of rows and the targets table.
-        .inner_size(520.0, 760.0)
-        .build();
+/// The one window: review and export, settings and the guide are sections
+/// of `ui/app.html` rather than windows of their own. The hash names the
+/// section the page should open on, so a reload keeps it; an existing
+/// window is moved with the `show-section` event instead.
+fn section_url(section: &str) -> String {
+    // An unknown name would leave the page with no section shown at all,
+    // so anything unexpected lands on review.
+    let name = match section {
+        "settings" | "help" => section,
+        _ => "review",
+    };
+    format!("app.html#{}", name)
 }
 
-/// A one input prompt for a sweep name. Small, native looking, closes on
-/// Esc and creates on Enter.
-fn open_new_sweep(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("newsweep") {
+fn open_main(app: &AppHandle, section: &str) {
+    let url = section_url(section);
+    // Everything after the hash: section_url has already vetted it.
+    let name = url.split('#').nth(1).unwrap_or("review").to_string();
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
+        let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        // Only the one window listens for this, so a global emit is enough.
+        let _ = app.emit("show-section", name);
+        rt_log(&format!("main window: shown at {}", section));
         return;
     }
-    let _ = WebviewWindowBuilder::new(app, "newsweep", WebviewUrl::App("newsweep.html".into()))
-        .title("New sweep")
-        .inner_size(360.0, 150.0)
-        .resizable(false)
-        .always_on_top(true)
-        .build();
-}
-
-fn open_review(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("review") {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
+    match WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App(url.into()))
+        .title("TagFix")
+        .inner_size(1040.0, 780.0)
+        .build()
+    {
+        Ok(win) => {
+            // Closing hides rather than destroys: reopening is then
+            // instant, and Capture after keeps its listener while the
+            // operator drags a fresh crop on screen. Quit still exits.
+            let hide_me = win.clone();
+            win.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = hide_me.hide();
+                    rt_log("main window: close request, hidden instead");
+                }
+            });
+            rt_log(&format!("main window: created at {}", section));
+        }
+        Err(e) => rt_log(&format!("main window: creation failed: {}", e)),
     }
-    let _ = WebviewWindowBuilder::new(app, "review", WebviewUrl::App("review.html".into()))
-        .title("TagFix review")
-        .inner_size(980.0, 720.0)
-        .build();
-}
-
-fn open_help(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("help") {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
-    }
-    let _ = WebviewWindowBuilder::new(app, "help", WebviewUrl::App("help.html".into()))
-        .title("How to use TagFix")
-        .inner_size(560.0, 720.0)
-        .build();
 }
 
 fn open_sweeps_folder() {
@@ -1896,7 +1888,7 @@ fn main() {
                             None => toast(app, "no tag to attach to", 2500),
                         }
                     } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyR) {
-                        open_review(app);
+                        open_main(app, "review");
                     } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS) {
                         // Trackpad friendly: no chording needed, the next
                         // plain left drag marks the region.
@@ -1933,8 +1925,6 @@ fn main() {
             get_last_note,
             attach_next_capture,
             create_sweep,
-            close_new_sweep,
-            new_sweep_prompt,
             render_export,
             open_export,
             save_export_as,
@@ -1942,7 +1932,8 @@ fn main() {
             list_sweep_tags,
             carry_forward,
             overlay_ready,
-            ui_loaded
+            ui_loaded,
+            main_window_ready
         ])
         .setup(|app| {
             checkpoint("setup entered");
@@ -1993,7 +1984,7 @@ fn main() {
                 );
             }
             // Quote and attach. Both have a fallback path (the pen chip,
-            // and the review window), so a conflict warns and nothing more.
+            // and the Review section), so a conflict warns and nothing more.
             if app
                 .global_shortcut()
                 .register(parse_hotkey_or(
@@ -2047,8 +2038,6 @@ fn main() {
                 true,
                 None::<&str>,
             )?;
-            let new_sweep_item =
-                MenuItem::with_id(app, "new-sweep", "New sweep", true, None::<&str>)?;
             let sweeps_item =
                 MenuItem::with_id(app, "open-sweeps", "Open sweeps folder", true, None::<&str>)?;
             let settings_item =
@@ -2062,10 +2051,9 @@ fn main() {
                     &arm_item,
                     &quote_item,
                     &review_item,
-                    &new_sweep_item,
-                    &sweeps_item,
                     &settings_item,
                     &help_item,
+                    &sweeps_item,
                     &quit_item,
                 ],
             )?;
@@ -2092,7 +2080,20 @@ fn main() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("TagFix")
                 .menu(&menu)
-                .show_menu_on_left_click(true)
+                // The menu belongs to the right button now: with it on the
+                // left button, the first click of a double click pops the
+                // menu and the second one lands in it.
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::DoubleClick {
+                        button: MouseButton::Left,
+                        ..
+                    } = event
+                    {
+                        rt_log("tray: left double click, opening the window at review");
+                        open_main(tray.app_handle(), "review");
+                    }
+                })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "arm" => toggle_armed(app),
                     "quote" => {
@@ -2107,11 +2108,10 @@ fn main() {
                             start_quote(&handle, point);
                         });
                     }
-                    "review" => open_review(app),
-                    "new-sweep" => open_new_sweep(app),
+                    "review" => open_main(app, "review"),
                     "open-sweeps" => open_sweeps_folder(),
-                    "settings" => open_settings(app),
-                    "help" => open_help(app),
+                    "settings" => open_main(app, "settings"),
+                    "help" => open_main(app, "help"),
                     "quit" => {
                         hook::set_armed(false);
                         hook::uninstall();
@@ -2130,6 +2130,9 @@ fn main() {
             if !startup_settings.help_shown {
                 startup_settings.help_shown = true;
                 let _ = settings::save(&exe_dir(), &startup_settings);
+                // The window carries the full guide; the native box is the
+                // fallback for a machine where the webview misbehaves.
+                open_main(&handle, "help");
                 std::thread::spawn(|| {
                     message_box(
                         "Welcome to TagFix",
@@ -2145,4 +2148,24 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running TagFix");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::section_url;
+
+    #[test]
+    fn section_url_names_the_page_and_the_section() {
+        assert_eq!(section_url("review"), "app.html#review");
+        assert_eq!(section_url("settings"), "app.html#settings");
+        assert_eq!(section_url("help"), "app.html#help");
+    }
+
+    #[test]
+    fn an_unknown_section_falls_back_to_review() {
+        // A window opened on a section the page does not know would show
+        // nothing at all, so anything unexpected lands on review.
+        assert_eq!(section_url(""), "app.html#review");
+        assert_eq!(section_url("newsweep"), "app.html#review");
+    }
 }

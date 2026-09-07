@@ -35,7 +35,7 @@ target chips below](docs/screenshot-quote.png)
 **Review and export:** reorder, edit, drop, carry forward, then copy the
 sheet for a chat window or export the fix list.
 
-![TagFix review window listing a region tag with its crop, context frame
+![The TagFix window listing a region tag with its crop, context frame
 and comparison attachment, a quote tag, and a carried tag with before and
 after pictures; the toolbar has New sweep, Carry forward, Export, Copy for
 chat, Copy as text, Open and Save as](docs/screenshot-review.png)
@@ -66,10 +66,11 @@ content, so what they show is the shipped markup rather than a mock-up.
 2. Put it in any folder you can write to. Sweeps land in a `sweeps` folder
    next to the exe unless you point the output directory elsewhere in
    Settings.
-3. Run it. A TagFix icon appears in the system tray. On first run Windows
-   may keep new tray icons hidden: drag the icon from the tray overflow onto
-   the visible tray, or enable it under Settings, Personalization, Taskbar,
-   Other system tray icons.
+3. Run it. A TagFix icon appears in the system tray. Double click it to
+   open the TagFix window; right click it for the menu. On first run
+   Windows may keep new tray icons hidden: drag the icon from the tray
+   overflow onto the visible tray, or enable it under Settings,
+   Personalization, Taskbar, Other system tray icons.
 
 The exe is fully self contained: the C runtime is statically linked, so no
 VC++ redistributable or any other install is needed. The only external
@@ -109,12 +110,14 @@ dependency is the WebView2 runtime, which is part of Windows 11 itself.
    saved instead of a new tag, and is exported beside the original.
 7. `Ctrl+Shift+T` again disarms, after which `Ctrl+Shift+drag` does
    nothing.
-8. `Ctrl+Shift+R` (or tray menu, Review and export): reorder tags by drag,
+8. `Ctrl+Shift+R` (tray menu, Review and export, or a double click on the
+   tray icon) opens the TagFix window at Review: reorder tags by drag,
    edit text, change severity, area and target, click a thumbnail to
    enlarge it, drop tags (dropped tags stay in the sweep file and can be
    picked back up).
-   - **New sweep** (also in the tray menu) asks for a name and starts a
-     fresh sweep, dated and slugged for you.
+   - **New sweep** is the name box beside the button: type a name and
+     press Enter or the button, and a fresh sweep starts, dated and
+     slugged for you.
    - **Carry forward** copies tags out of an earlier sweep into this one
      as re-reports, with the original picture. The earlier sweep is left
      alone. A carried row then offers **Capture after**, which takes one
@@ -143,6 +146,24 @@ Only `Ctrl+Shift`+left click and a click on the pen chip are intercepted,
 and only while armed. Every other key and click, `Esc` included, belongs
 to your own apps.
 
+### The tray icon and the window
+
+TagFix lives in the system tray and has one window, with three sections in
+a sidebar: Review (the sweep, its tags and the ways out of it), Settings,
+and How to use.
+
+| Tray gesture | What happens |
+| --- | --- |
+| double click | the window opens at Review and export |
+| right click | the menu: Arm / disarm, Quote highlight, Review and export, Settings, How to use, Open sweeps folder, Quit |
+| single left click | nothing, so the first click of a double click does not pop the menu |
+
+Closing the window hides it rather than quitting, so reopening is instant,
+the sweep you were looking at is still selected, and a Capture after you
+started keeps working while you drag on screen. Quit in the tray menu is
+what ends the process. The section you are on is kept in the window
+address, so reloading the window comes back to the same section.
+
 ### Hotkeys
 
 | Keys | Meaning |
@@ -152,7 +173,7 @@ to your own apps.
 | `Ctrl+Shift+S` | the next plain drag marks a region (trackpad friendly) |
 | `Ctrl+Shift+Q` | turn the current highlight into a quote tag (changeable) |
 | `Ctrl+Shift+A` | the next drag attaches a comparison crop to the last tag (changeable) |
-| `Ctrl+Shift+R` | review and export |
+| `Ctrl+Shift+R` | open the window at Review and export |
 | `Enter` | save the tag (in the popover) |
 | `Shift+Enter` | newline (in the popover) |
 | `Ctrl+Up` | recall the last note and chips (in the popover) |
@@ -173,7 +194,7 @@ TagFix is single instance: launching it again just tells you it is
 already running. If another program owns the arm, quote or attach hotkey,
 TagFix starts anyway, warns you, and you can pick different combinations
 in Settings. A hotkey that failed to register is the only thing lost: the
-pen chip and the review window keep working without theirs.
+pen chip and the TagFix window keep working without theirs.
 
 **The clipboard and a quote tag.** Reading a highlight means borrowing
 the clipboard for a moment: TagFix saves what is there, sends Ctrl+C to
@@ -191,8 +212,9 @@ that happens on every selection.
 Edge and Firefox only, and never for longer than 250 ms. Anywhere else it
 stays empty, and so does the target unless you pick one in the popover.
 
-On first launch TagFix opens a How to use window with every hotkey and the
-full flow; reopen it any time from the tray menu. If arming ever fails to
+On first launch TagFix opens its window at How to use, with every hotkey
+and the full flow, behind a short native summary box; reopen it any time
+from the tray menu. If arming ever fails to
 draw the overlay, TagFix disarms itself within six seconds and says so
 instead of covering the screen. If startup itself cannot finish, for
 example because the WebView2 runtime is missing, broken, or blocked by
