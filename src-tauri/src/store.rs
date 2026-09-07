@@ -263,6 +263,37 @@ impl SweepStore {
         self.root.join(dir_name).join("sweep.json")
     }
 
+    /// The file naming the sweep new tags go into.
+    ///
+    /// Without it "newest" would mean "the name that sorts last", which is
+    /// wrong the moment two sweeps are created on one day and the newer one
+    /// sorts earlier: 2026-09-07-alpha created after 2026-09-07-zulu would
+    /// never receive a tag.
+    pub fn active_marker_path(&self) -> PathBuf {
+        self.root.join("active.txt")
+    }
+
+    pub fn set_active_sweep(&self, dir_name: &str) -> io::Result<()> {
+        fs::create_dir_all(&self.root)?;
+        fs::write(self.active_marker_path(), dir_name.trim().as_bytes())
+    }
+
+    /// The marked sweep, when the marker names one that still exists. A
+    /// deleted or hand-mangled name is ignored rather than fatal, and a
+    /// name with a path separator in it is never followed.
+    pub fn marked_active_sweep(&self) -> Option<String> {
+        let raw = fs::read_to_string(self.active_marker_path()).ok()?;
+        let name = raw.trim();
+        if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+            return None;
+        }
+        if self.sweep_json_path(name).exists() {
+            Some(name.to_string())
+        } else {
+            None
+        }
+    }
+
     /// Create a new sweep folder for today. Errors if it already exists.
     pub fn create_sweep(&self, slug: &str, now_utc: &str) -> io::Result<(String, Sweep)> {
         let slug = sanitize_slug(slug);
@@ -278,6 +309,8 @@ impl SweepStore {
         fs::create_dir_all(&dir)?;
         let sweep = Sweep::new(&slug, now_utc);
         write_json_atomic(&self.sweep_json_path(&dir_name), &sweep)?;
+        // A sweep is created in order to be used, so it becomes active.
+        let _ = self.set_active_sweep(&dir_name);
         Ok((dir_name, sweep))
     }
 
@@ -314,8 +347,13 @@ impl SweepStore {
         write_json_atomic(&self.sweep_json_path(dir_name), sweep)
     }
 
-    /// The active sweep: the newest existing sweep, or a fresh default one.
+    /// The active sweep: whatever the marker names, else the newest
+    /// existing sweep, else a fresh default one.
     pub fn active_sweep(&self, now_utc: &str) -> io::Result<(String, Sweep)> {
+        if let Some(name) = self.marked_active_sweep() {
+            let sweep = self.load_sweep(&name)?;
+            return Ok((name, sweep));
+        }
         if let Some((name, _)) = self.list_sweeps()?.into_iter().next() {
             let sweep = self.load_sweep(&name)?;
             return Ok((name, sweep));
@@ -967,6 +1005,64 @@ mod tests {
         store.create_sweep("new", "2026-08-13T09:00:00Z").unwrap();
         let (name, _) = store.active_sweep("2026-08-13T10:00:00Z").unwrap();
         assert_eq!(name, "2026-08-13-new");
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn creating_a_sweep_makes_it_active() {
+        let store = SweepStore::new(tmp_root("active-marker"));
+        let (name, _) = store.create_sweep("login", "2026-08-13T10:00:00Z").unwrap();
+        assert_eq!(store.marked_active_sweep().as_deref(), Some(name.as_str()));
+        assert_eq!(store.active_sweep("2026-08-13T11:00:00Z").unwrap().0, name);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn the_marker_beats_the_name_order() {
+        // Created second but sorts first: only the marker can tell.
+        let store = SweepStore::new(tmp_root("active-order"));
+        store.create_sweep("zulu", "2026-08-13T10:00:00Z").unwrap();
+        let (alpha, _) = store.create_sweep("alpha", "2026-08-13T11:00:00Z").unwrap();
+        assert_eq!(store.list_sweeps().unwrap()[0].0, "2026-08-13-zulu");
+        assert_eq!(store.active_sweep("2026-08-13T12:00:00Z").unwrap().0, alpha);
+        // And it can be pointed back at the older one.
+        store.set_active_sweep("2026-08-13-zulu").unwrap();
+        assert_eq!(
+            store.active_sweep("2026-08-13T12:00:00Z").unwrap().0,
+            "2026-08-13-zulu"
+        );
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn a_marker_naming_a_deleted_sweep_falls_back_to_the_newest() {
+        let store = SweepStore::new(tmp_root("active-stale"));
+        store.create_sweep("alpha", "2026-08-12T10:00:00Z").unwrap();
+        let (gone, _) = store.create_sweep("gone", "2026-08-13T10:00:00Z").unwrap();
+        fs::remove_dir_all(store.root().join(&gone)).unwrap();
+        assert_eq!(store.marked_active_sweep(), None);
+        assert_eq!(
+            store.active_sweep("2026-08-13T11:00:00Z").unwrap().0,
+            "2026-08-12-alpha"
+        );
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn a_marker_with_a_path_in_it_is_ignored() {
+        let store = SweepStore::new(tmp_root("active-path"));
+        store.create_sweep("alpha", "2026-08-12T10:00:00Z").unwrap();
+        fs::write(store.active_marker_path(), "..\\..\\elsewhere").unwrap();
+        assert_eq!(store.marked_active_sweep(), None);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn the_marker_file_is_not_mistaken_for_a_sweep() {
+        let store = SweepStore::new(tmp_root("active-list"));
+        store.create_sweep("alpha", "2026-08-12T10:00:00Z").unwrap();
+        assert!(store.active_marker_path().exists());
+        assert_eq!(store.list_sweeps().unwrap().len(), 1);
         let _ = fs::remove_dir_all(store.root());
     }
 

@@ -14,6 +14,18 @@
     <small>Modifiers joined with plus, for example ctrl+alt+f9</small>
   </label>
   <label>
+    Quote hotkey
+    <input id="quote-hotkey" type="text" spellcheck="false"
+      placeholder="ctrl+shift+q">
+    <small>Turns the current highlight into a quote tag</small>
+  </label>
+  <label>
+    Attach hotkey
+    <input id="attach-hotkey" type="text" spellcheck="false"
+      placeholder="ctrl+shift+a">
+    <small>The next drag attaches a comparison crop to the last tag</small>
+  </label>
+  <label>
     Output directory
     <input id="output-dir" type="text" spellcheck="false"
       placeholder="blank = sweeps folder next to tagfix.exe">
@@ -22,6 +34,42 @@
     <input id="launch-login" type="checkbox">
     Launch at login (current user only)
   </label>
+  <label class="check">
+    <input id="show-pen-chip" type="checkbox">
+    Show the pen chip after a highlight
+  </label>
+  <label class="check">
+    <input id="quote-screenshot" type="checkbox">
+    Also save a screenshot of the window with a quote tag
+  </label>
+  <label class="check">
+    <input id="context-frame" type="checkbox">
+    Save a context frame beside every region crop
+  </label>
+  <label class="check">
+    <input id="new-sweep-each-day" type="checkbox">
+    Start a new sweep on the first capture of each day
+  </label>
+
+  <h2>Targets</h2>
+  <p class="note">
+    Which product a tag is about, matched on the URL host. A host matches a
+    pattern exactly or as a subdomain of it. The export directory receives a
+    copy of that target's evidence at export time; leave it blank for none.
+  </p>
+  <table id="targets">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Hosts (comma separated)</th>
+        <th>Export directory</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="targets-body"></tbody>
+  </table>
+  <button id="add-target-btn" class="secondary">Add target</button>
+
   <div id="actions">
     <button id="save-btn">Save</button>
     <span id="status"></span>
