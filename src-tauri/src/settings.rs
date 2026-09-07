@@ -71,6 +71,38 @@ pub fn target_for_host<'a>(targets: &'a [Target], host: &str) -> Option<&'a str>
     best.map(|(_, name)| name)
 }
 
+/// The host part of whatever the address bar held.
+///
+/// Not a URL parser: browsers hide the scheme, so "slobal.com/portal" has
+/// to work as well as "https://user@slobal.com:443/portal", and anything
+/// unrecognisable simply yields an empty host and therefore no target.
+pub fn host_of_url(url: &str) -> String {
+    let raw = url.trim();
+    let after_scheme = match raw.find("://") {
+        Some(i) => &raw[i + 3..],
+        None => raw,
+    };
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    let host = match authority.rfind('@') {
+        Some(i) => &authority[i + 1..],
+        None => authority,
+    };
+    // A bracketed IPv6 literal has colons of its own; keep it whole.
+    if host.starts_with('[') {
+        let end = host.find(']').map(|i| i + 1).unwrap_or(host.len());
+        return host[..end].to_lowercase();
+    }
+    normalize_host(host)
+}
+
+/// Which target a URL belongs to, host matching and all.
+pub fn target_for_url<'a>(targets: &'a [Target], url: &str) -> Option<&'a str> {
+    target_for_host(targets, &host_of_url(url))
+}
+
 /// Lowercase, drop any port and any trailing root dot. Callers hand us
 /// whatever the address bar held.
 fn normalize_host(host: &str) -> String {
@@ -286,6 +318,36 @@ mod tests {
         assert_eq!(target_for_host(&t, ""), None);
         assert_eq!(target_for_host(&t, "   "), None);
         assert_eq!(target_for_host(&[], "slobal.com"), None);
+    }
+
+    #[test]
+    fn host_is_read_out_of_whatever_the_address_bar_held() {
+        assert_eq!(host_of_url("https://slobal.com/portal"), "slobal.com");
+        // Chrome and Edge hide the scheme.
+        assert_eq!(host_of_url("slobal.com/portal"), "slobal.com");
+        assert_eq!(host_of_url("http://localhost:5173/login"), "localhost");
+        assert_eq!(host_of_url("https://acme.on.slobal.com"), "acme.on.slobal.com");
+        assert_eq!(host_of_url("https://user@slobal.com:443/x"), "slobal.com");
+        assert_eq!(host_of_url("HTTPS://WWW.Slobal.COM/"), "www.slobal.com");
+        assert_eq!(host_of_url("https://slobal.com?a=b"), "slobal.com");
+        assert_eq!(host_of_url("https://slobal.com#top"), "slobal.com");
+        assert_eq!(host_of_url("http://[::1]:8080/x"), "[::1]");
+        assert_eq!(host_of_url(""), "");
+        assert_eq!(host_of_url("   "), "");
+    }
+
+    #[test]
+    fn a_url_picks_its_target() {
+        let t = default_targets();
+        assert_eq!(
+            target_for_url(&t, "https://acme.on.slobal.com/portal"),
+            Some("helmsly")
+        );
+        assert_eq!(target_for_url(&t, "https://slobal.com/"), Some("slobal.com"));
+        assert_eq!(target_for_url(&t, "http://127.0.0.1:8080/"), Some("helmsly"));
+        assert_eq!(target_for_url(&t, "https://example.com/"), None);
+        // No URL at all is the common case: not every window is a browser.
+        assert_eq!(target_for_url(&t, ""), None);
     }
 
     #[test]

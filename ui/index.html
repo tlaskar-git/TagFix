@@ -11,8 +11,22 @@
        there is something to say, and takes itself away again. -->
   <div id="toast"></div>
   <div id="selection"></div>
+  <!-- The pen chip after a highlight. Drawn here, clicked through the
+       mouse hook: the overlay is click-through, so the app underneath
+       never loses its selection to this button. Inline SVG, no asset. -->
+  <div id="pen-chip">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+      <path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"
+        fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linejoin="round"></path>
+      <path d="M14.5 6.5l3 3" fill="none" stroke="currentColor"
+        stroke-width="1.8" stroke-linecap="round"></path>
+    </svg>
+  </div>
   <div id="popover">
-    <textarea id="tag-text" rows="3" placeholder="What is wrong here?"></textarea>
+    <div id="quote-block"></div>
+    <textarea id="tag-text" rows="3" spellcheck="true"
+      placeholder="What is wrong here?"></textarea>
     <div class="chip-row" id="severity-chips" data-value="medium">
       <button class="chip" data-value="high">high</button>
       <button class="chip selected" data-value="medium">medium</button>
@@ -25,7 +39,12 @@
       <button class="chip" data-value="behaviour">behaviour</button>
       <button class="chip selected" data-value="other">other</button>
     </div>
-    <div id="popover-hint">Enter saves, Shift+Enter newline, Esc cancels</div>
+    <!-- Filled from settings when the entry opens; "other" is always the
+         last chip in the row. -->
+    <div class="chip-row" id="target-chips" data-value="other"></div>
+    <div id="popover-hint">
+      Enter saves, Shift+Enter newline, Ctrl+Up recalls the last note, Esc cancels
+    </div>
   </div>
   <script src="main.js"></script>
 </body>
