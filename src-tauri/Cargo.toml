@@ -1,6 +1,6 @@
 [package]
 name = "tagfix"
-version = "0.2.3"
+version = "0.3.0"
 description = "Tag what is wrong on screen, get a fix list out."
 authors = ["tlaskar-git"]
 edition = "2021"
@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
@@ -26,6 +27,13 @@ windows = { version = "0.61", features = [
     "Win32_System_Console",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Shell",
 ] }
 
 [lib]

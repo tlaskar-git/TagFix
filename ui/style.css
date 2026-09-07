@@ -65,10 +65,34 @@ body.one-shot #armed-frame {
   pointer-events: none;
 }
 
+/* The pen chip after a highlight. It sits on a click-through window, so
+   pointer events are pointless here: the mouse hook hit tests the same
+   rectangle in screen pixels and swallows the click. Keep the size in step
+   with CHIP_SIZE in main.js. */
+#pen-chip {
+  position: fixed;
+  display: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #1c1c1f;
+  border: 1px solid #3a3a3f;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  color: #ececee;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+body.chip-visible #pen-chip {
+  display: flex;
+}
+
 /* During the actual pixel grab every bit of overlay chrome disappears. */
 body.capturing #armed-frame,
 body.capturing #toast,
 body.capturing #selection,
+body.capturing #pen-chip,
 body.capturing #popover {
   display: none !important;
 }
@@ -92,6 +116,32 @@ body.entry #popover {
 
 body.entry {
   cursor: default;
+}
+
+/* The quoted text on a quote tag: read only, monospace, six lines before
+   it scrolls. Selectable, because the operator may want to copy a phrase
+   back out of it. */
+#quote-block {
+  display: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  max-height: 96px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: #232326;
+  border: 1px solid #3a3a3f;
+  border-left: 3px solid #e5484d;
+  border-radius: 4px;
+  color: #cfcfd4;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  line-height: 16px;
+  user-select: text;
+}
+
+body.quote-entry #quote-block {
+  display: block;
 }
 
 #tag-text {
