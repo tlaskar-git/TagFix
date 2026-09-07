@@ -17,14 +17,31 @@ TagFix is not an audio metadata repair tool. Different itch entirely.
 Ctrl+Shift+drag a box around it, describe it, press Enter, and the screen
 is yours again.
 
-![Armed TagFix overlay: a region of a File Explorer window has been
-captured and the tag entry popover is open with severity high and area
-layout selected](docs/screenshot-tagging.png)
+![Armed TagFix overlay: the save row of a settings form is outlined and
+the tag entry popover is open below it with severity high, area layout
+and target helmsly selected](docs/screenshot-tagging.png)
 
-**Review and export:** reorder, edit, drop, then export the fix list.
+**Quoting:** when something reads wrong, highlight it as you would before
+a copy. A pen chip appears where you let go; click it (or press
+Ctrl+Shift+Q) and comment on the quote.
 
-![TagFix review window listing three captured tags with severity and area
-controls and an Export fix list button](docs/screenshot-review.png)
+![A chat page with one sentence highlighted and the TagFix pen chip
+sitting just below the end of the highlight](docs/screenshot-chip.png)
+
+![The same page with the tag entry popover open: the highlighted sentence
+sits in a quote block above the comment box, with severity, area and
+target chips below](docs/screenshot-quote.png)
+
+**Review and export:** reorder, edit, drop, carry forward, then copy the
+sheet for a chat window or export the fix list.
+
+![TagFix review window listing a region tag with its crop, context frame
+and comparison attachment, a quote tag, and a carried tag with before and
+after pictures; the toolbar has New sweep, Carry forward, Export, Copy for
+chat, Copy as text, Open and Save as](docs/screenshot-review.png)
+
+The screenshots are rendered from the real TagFix windows with sample
+content, so what they show is the shipped markup rather than a mock-up.
 
 ## Vocabulary
 
@@ -243,6 +260,19 @@ cargo build --release
 ```
 
 The exe lands at `src-tauri/target/release/tagfix.exe`.
+
+A release build embeds the absolute path of every source file it may name
+in a panic message, which means your user name and checkout location end
+up inside the exe. For a build you intend to hand to someone else, remap
+them first. `RUSTFLAGS` replaces the flags in `.cargo/config.toml`, so the
+static CRT flag is repeated here:
+
+```
+set RUSTFLAGS=-C target-feature=+crt-static --remap-path-prefix=%USERPROFILE%\.cargo=cargo --remap-path-prefix=<checkout>=tagfix
+cargo build --release
+```
+
+The `dist/tagfix.exe` in this repo is built that way.
 
 The UI harness runs the vanilla JS under a small DOM shim in Node, since
 this UI needs a WebView2 window no test runner can open. Run it from the

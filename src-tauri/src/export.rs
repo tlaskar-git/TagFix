@@ -1154,7 +1154,7 @@ mod tests {
             "Wrong: it is pinned to the footer at every width.",
         );
         q.target = "helmsly".into();
-        q.window_title = "Claude - Helmsly round 98".into();
+        q.window_title = "Claude - review notes".into();
         q.process_name = "claude.exe".into();
 
         let mut r = tag(2, "The Deploy button is enabled too early.", "medium", "behaviour", false);
@@ -1169,10 +1169,10 @@ mod tests {
 
     #[test]
     fn feedback_md_matches_the_agreed_shape() {
-        let md = render_feedback_md(&mixed_sweep(), "2026-09-07-claude-round-98");
-        assert!(md.starts_with("Feedback on 2026-09-07-claude-round-98 (2 notes)\n"));
+        let md = render_feedback_md(&mixed_sweep(), "2026-09-07-review-notes");
+        assert!(md.starts_with("Feedback on 2026-09-07-review-notes (2 notes)\n"));
         assert!(md.contains(
-            "Sources: Claude - Helmsly round 98 (claude.exe); slobal.com/portal (msedge.exe)"
+            "Sources: Claude - review notes (claude.exe); slobal.com/portal (msedge.exe)"
         ));
         assert!(md.contains("1. (tag 01) [high / copy / helmsly]\n"));
         assert!(md.contains("> The Save button sits below the fold;\n"));
@@ -1185,7 +1185,7 @@ mod tests {
 
     #[test]
     fn feedback_txt_drops_the_markdown_syntax() {
-        let txt = render_feedback_txt(&mixed_sweep(), "2026-09-07-claude-round-98");
+        let txt = render_feedback_txt(&mixed_sweep(), "2026-09-07-review-notes");
         assert!(txt.contains("1. (tag 01)\n"));
         assert!(txt.contains("Severity: high, area: copy, target: helmsly\n"));
         assert!(txt.contains("    The Save button sits below the fold;\n"));

@@ -140,3 +140,30 @@ From the three commit bodies and the code comments.
 - The CF_HTML fragment is stored and not rendered, as the plan scoped it.
 - No tombstone, status or assignee field crept in: carried tags and after
   captures are evidence, per the round constraint.
+
+## Follow-up: v0.3.1, the public repo pass
+
+Done after the merge of PR #2, straight to main.
+
+- Private information removed from the tree: a user profile path in the
+  phase 0 preflight report, the operator's email and reporting channel in
+  the round 01 plan, and an infrastructure detail that had been used as
+  the sample quote in the round 02 plan, the export tests, the store
+  tests and the UI harness. All replaced with neutral sample text. The
+  earlier commits still hold the old text; rewriting public history was
+  judged worse than leaving it.
+- The shipped exe carried the build machine's absolute paths, user name
+  included, in every crate's panic location. `dist/tagfix.exe` is now
+  built with `--remap-path-prefix` for the cargo home and the checkout
+  (documented in the README Building section). Cargo's `trim-paths`
+  profile option would be the cleaner fix, but it is not stable in the
+  toolchain used here.
+- Review window: both the Open and Save as dropdowns sat open from the
+  first paint because `.menu` set `display` after `.hidden` did. A
+  `.menu.hidden` rule fixes it. Found by rendering the window, which the
+  DOM harness cannot catch since it carries no CSS.
+- Screenshots: the two 0.2 images are replaced and two new ones added
+  (pen chip, quote popover). They are rendered from the shipped `ui/`
+  markup and CSS in a headless browser with the Tauri bridge shimmed and
+  sample content, since this machine cannot show the real windows. The
+  README says so.

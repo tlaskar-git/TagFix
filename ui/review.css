@@ -76,6 +76,12 @@ button {
   gap: 2px;
 }
 
+/* .menu sets display after .hidden does, so the hidden state needs the
+   more specific rule or both dropdowns sit open from the first paint. */
+.menu.hidden {
+  display: none;
+}
+
 .menu-item {
   background: transparent;
   border: none;
