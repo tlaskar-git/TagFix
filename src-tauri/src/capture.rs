@@ -260,7 +260,9 @@ mod tests {
     }
 }
 
-fn write_png(path: &PathBuf, width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
+/// RGBA8 to PNG. Shared with context.rs, which rewrites a frame after
+/// scaling it and drawing the outline.
+pub(crate) fn write_png(path: &PathBuf, width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
     let file = std::fs::File::create(path)?;
     let w = std::io::BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, width, height);
