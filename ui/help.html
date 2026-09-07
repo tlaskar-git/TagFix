@@ -18,10 +18,25 @@
     <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td>
         <td>While armed: the next plain drag marks a region, no keys held.
           Easier on a laptop trackpad</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd></td>
+        <td>While armed: turn the text you just highlighted into a quote
+          tag (changeable in Settings)</td></tr>
+    <tr><td>pen chip</td>
+        <td>The small round pen button that appears below right of a
+          highlight for four seconds. Clicking it does the same as
+          <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>. The click never
+          reaches the app underneath, so your selection survives. Turn it
+          off in Settings</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td>
+        <td>While armed: the next drag attaches a comparison crop to the
+          tag you just saved (changeable in Settings)</td></tr>
     <tr><td><kbd>Enter</kbd></td>
         <td>Save the tag and hand the screen straight back to you</td></tr>
     <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td>
         <td>Newline inside the tag text</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Up</kbd></td>
+        <td>In the popover: recall the note and the chips from your last
+          save, to edit rather than retype</td></tr>
     <tr><td><kbd>Esc</kbd></td>
         <td>Cancel the tag you are typing</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td>
@@ -34,36 +49,95 @@
       <strong>Keep working normally:</strong> armed is a quiet standby
       state, marked only by a thin frame at the edge of the screen. Your
       clicks, typing, and scrolling all behave exactly as usual.</li>
-    <li>When you see something wrong, hold <kbd>Ctrl</kbd>+<kbd>Shift</kbd>
-      and drag a box around it with the left mouse button. On a trackpad,
-      where holding two keys through a click is awkward, press
-      <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> instead: a short
-      DRAG NOW prompt appears and your next ordinary drag marks the
-      region.</li>
-    <li>Release. A popover opens: type what is wrong, and pick severity
-      (high, medium, low) and area (layout, copy, a11y, behaviour, other)
-      or keep the defaults.</li>
+    <li><strong>Something looks wrong:</strong> hold
+      <kbd>Ctrl</kbd>+<kbd>Shift</kbd> and drag a box around it with the
+      left mouse button. On a trackpad, where holding two keys through a
+      click is awkward, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
+      instead: a short DRAG NOW prompt appears and your next ordinary drag
+      marks the region.</li>
+    <li><strong>Something reads wrong:</strong> highlight the text as you
+      would before a copy. The pen chip appears beside it; click it, or
+      press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd>. The popover
+      opens with the quote in a scrollable block above the note box. No
+      screenshot is taken unless you turn that on in Settings.</li>
+    <li>Type what is wrong, and pick severity (high, medium, low), area
+      (layout, copy, a11y, behaviour, other) and target (which product
+      this is about) or keep the defaults. The target is preselected from
+      the page address when TagFix can read it. The note box
+      spellchecks. <kbd>Ctrl</kbd>+<kbd>Up</kbd> brings back your last
+      note and chips.</li>
     <li>Press <kbd>Enter</kbd>. The tag is saved and the screen is yours
-      again, still armed. Mark the next thing the same way whenever you
-      like.</li>
+      again, still armed. To add a second crop to that same tag, a before
+      and after or a comparison, press
+      <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> and drag: the crop
+      joins the tag instead of starting a new one.</li>
     <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> again to
       disarm. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+drag then does nothing.</li>
-    <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>, tidy the list
-      (drag to reorder, click text to edit, drop what you do not want),
-      then press Export fix list.</li>
+    <li>Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> for review:
+      drag rows to reorder, click text to edit, click a thumbnail to
+      enlarge it, drop what you do not want. <strong>New sweep</strong>
+      starts a fresh one by name (also in the tray menu).
+      <strong>Carry forward</strong> copies tags out of an earlier sweep
+      into this one as re-reports, keeping the original picture; a carried
+      row then offers <strong>Capture after</strong>, which takes one
+      fresh crop and stores it beside the original.</li>
   </ol>
-  <p>Only <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+left click is taken while
-    armed. Every other key and click, <kbd>Esc</kbd> included, goes to
-    your own apps untouched.</p>
-  <p>Export writes three files into the sweep folder and puts a pointer to
-    brief.md on the clipboard: fixlist.md (evidence ledger), fixlist.html
-    (single file, opens anywhere offline), brief.md (agent brief with one
-    task and acceptance criterion per tag).</p>
+  <p>Only <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+left click and a click on the
+    pen chip are taken while armed. Every other key and click,
+    <kbd>Esc</kbd> included, goes to your own apps untouched.</p>
+
+  <h2>Getting it out</h2>
+  <p><strong>Copy for chat</strong> puts the whole sweep on the clipboard
+    as Markdown, ready to paste into a chat window; <strong>Copy as
+    text</strong> does the same without the Markdown syntax. Neither needs
+    an export first. <strong>Open</strong> opens any of the five files in
+    its default app, <strong>Save as</strong> writes one wherever you
+    choose, and <strong>Export</strong> writes all five into the sweep
+    folder and copies a pointer to brief.md to the clipboard:</p>
+  <table>
+    <tr><td><code>fixlist.md</code></td><td>the full evidence ledger</td></tr>
+    <tr><td><code>fixlist.html</code></td>
+        <td>the same, single file, images inlined, opens offline</td></tr>
+    <tr><td><code>brief.md</code></td>
+        <td>agent brief, one task and acceptance criterion per tag,
+          grouped by target</td></tr>
+    <tr><td><code>feedback.md</code></td><td>the chat ready sheet</td></tr>
+    <tr><td><code>feedback.txt</code></td><td>the same in plain text</td></tr>
+  </table>
+  <p>If a target has an export directory set in Settings, Export also
+    drops that target's own tags and images into a folder there, named
+    after the sweep.</p>
 
   <h2>Where things live</h2>
   <p>Sweeps land in a <code>sweeps</code> folder next to tagfix.exe, one
-    folder per sweep with sweep.json plus the tag PNGs. Change the location
-    in Settings (tray icon, Settings).</p>
+    folder per sweep with sweep.json plus the PNGs. Change the location in
+    Settings (tray icon, Settings). <code>sweeps/active.txt</code> names
+    the sweep currently being written to.</p>
+  <table>
+    <tr><td><code>tag-NN.png</code></td><td>the crop</td></tr>
+    <tr><td><code>tag-NN-context.png</code></td>
+        <td>the whole window at reduced size with the crop outlined in
+          red, so the crop can be placed later</td></tr>
+    <tr><td><code>tag-NN-a1.png</code></td>
+        <td>an attachment (a2, a3 and so on for the next ones)</td></tr>
+    <tr><td><code>tag-NN-before.png</code></td>
+        <td>the original picture of a carried tag</td></tr>
+    <tr><td><code>tag-NN-quote.png</code></td>
+        <td>the optional window screenshot of a quote tag</td></tr>
+  </table>
+
+  <h2>Known limits</h2>
+  <ul>
+    <li>A quote tag is read by borrowing the clipboard for a moment.
+      TagFix puts your text back afterwards, but it cannot put back an
+      image or a copied file: if that is what was on the clipboard, it is
+      gone.</li>
+    <li>In a terminal with nothing selected, Ctrl+C is an interrupt. The
+      quote gesture is deliberate for that reason: highlight first.</li>
+    <li>The page address is read from Chrome, Edge and Firefox only.
+      Anywhere else the URL stays empty, and so does the target unless you
+      pick one yourself.</li>
+  </ul>
 
   <h2>Command line</h2>
   <table>
