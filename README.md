@@ -49,6 +49,13 @@ output directory, five toggles, and a targets table with name, hosts and
 export directory columns for helmsly, slobal.com and
 AgnCred](docs/screenshot-settings.png)
 
+**How to use:** the third section is the in-app guide, every hotkey and
+the full flow, so the exe explains itself without this README.
+
+![The How to use section of the TagFix window: a controls table of
+hotkeys and the pen chip, then the tray icon gestures: double click opens
+the window, right click shows the menu](docs/screenshot-help.png)
+
 The screenshots are rendered from the shipped `ui/` markup and CSS with
 sample content, so what they show is the real window rather than a
 mock-up. `node tools/render-screenshots.js` regenerates them with any

@@ -342,6 +342,8 @@ function windowPage(section) {
 }
 fs.writeFileSync(path.join(OUT, "window-review.html"), windowPage("review"));
 fs.writeFileSync(path.join(OUT, "window-settings.html"), windowPage("settings"));
+fs.writeFileSync(path.join(OUT, "window-help.html"), windowPage("help"));
 shoot("window-review.html", 1040, 780, path.join(DOCS, "screenshot-review.png"));
 shoot("window-settings.html", 1040, 780, path.join(DOCS, "screenshot-settings.png"));
+shoot("window-help.html", 1040, 780, path.join(DOCS, "screenshot-help.png"));
 console.log("done");
