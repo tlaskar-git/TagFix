@@ -40,8 +40,19 @@ and comparison attachment, a quote tag, and a carried tag with before and
 after pictures; the toolbar has New sweep, Carry forward, Export, Copy for
 chat, Copy as text, Open and Save as](docs/screenshot-review.png)
 
-The screenshots are rendered from the real TagFix windows with sample
-content, so what they show is the shipped markup rather than a mock-up.
+**Settings:** the same window, one section over. Hotkeys, the output
+folder, the pen chip and context frame toggles, day rollover, and the
+targets table that maps page hosts to products.
+
+![The Settings section of the TagFix window: three hotkey fields, the
+output directory, five toggles, and a targets table with name, hosts and
+export directory columns for helmsly, slobal.com and
+AgnCred](docs/screenshot-settings.png)
+
+The screenshots are rendered from the shipped `ui/` markup and CSS with
+sample content, so what they show is the real window rather than a
+mock-up. `node tools/render-screenshots.js` regenerates them with any
+Edge or Chrome already on the machine.
 
 ## Vocabulary
 
@@ -300,6 +311,12 @@ The UI harness runs the vanilla JS under a small DOM shim in Node, since
 this UI needs a WebView2 window no test runner can open. Run it from the
 repo root with `node tests/ui/run.js`; it exits non zero if any check
 fails.
+
+`node tools/render-screenshots.js` regenerates every image in `docs/`
+from the shipped `ui/` pages: it copies them to a temp folder, shims the
+Tauri bridge with sample data, and screenshots them through the Edge or
+Chrome already on the machine (set `TAGFIX_BROWSER` to point at another).
+Nothing under `tools/` ships in the exe.
 
 ## Constraints honoured
 
