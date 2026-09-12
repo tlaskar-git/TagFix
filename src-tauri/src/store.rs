@@ -7,6 +7,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
@@ -232,17 +233,49 @@ pub fn tag_quote_image_name(number: u32) -> String {
     format!("tag-{:02}-quote.png", number)
 }
 
+/// Serialises every load-modify-save in this process. The overlay, the
+/// hotkeys and the Review section all write sweep.json, and two of them
+/// interleaving would lose one edit.
+static STORE_LOCK: Mutex<()> = Mutex::new(());
+
+fn store_lock() -> MutexGuard<'static, ()> {
+    STORE_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The temp file an atomic write goes through.
+fn tmp_path(path: &Path) -> PathBuf {
+    path.with_extension("json.tmp")
+}
+
+/// Run a filesystem step, retrying briefly: on Windows a file another
+/// handle has open (a reader, antivirus, the indexer) refuses a replace for
+/// a moment rather than for good.
+fn with_retry<T>(mut step: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut last = None;
+    for attempt in 0..20 {
+        match step() {
+            Ok(v) => return Ok(v),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(e),
+            Err(e) => {
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(10 + attempt * 5));
+            }
+        }
+    }
+    Err(last.unwrap())
+}
+
 /// Atomic JSON write: write to a temp file in the same directory, then rename.
 pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let json = serde_json::to_string_pretty(value)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json.as_bytes())?;
-    // On Windows, rename over an existing file fails; remove first.
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(&tmp, path)?;
+    let tmp = tmp_path(path);
+    with_retry(|| fs::write(&tmp, json.as_bytes()))?;
+    // std's rename replaces an existing file on Windows too. Removing the
+    // target first is what used to lose sweep.json: with a reader holding
+    // it, the delete only goes pending, the rename onto that name is then
+    // refused, and the folder is left with nothing but sweep.json.tmp.
+    with_retry(|| fs::rename(&tmp, path))?;
     Ok(())
 }
 
@@ -287,7 +320,7 @@ impl SweepStore {
         if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
             return None;
         }
-        if self.sweep_json_path(name).exists() {
+        if self.has_sweep(name) {
             Some(name.to_string())
         } else {
             None
@@ -296,6 +329,7 @@ impl SweepStore {
 
     /// Create a new sweep folder for today. Errors if it already exists.
     pub fn create_sweep(&self, slug: &str, now_utc: &str) -> io::Result<(String, Sweep)> {
+        let _guard = store_lock();
         let slug = sanitize_slug(slug);
         let date = &now_utc[..10];
         let dir_name = sweep_dir_name(date, &slug);
@@ -326,9 +360,11 @@ impl SweepStore {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();
-            let json = self.sweep_json_path(&name);
-            if json.exists() {
-                let sweep = self.load_sweep(&name)?;
+            if !self.has_sweep(&name) {
+                continue;
+            }
+            // One unreadable sweep must not hide every other one.
+            if let Ok(sweep) = self.load_sweep(&name) {
                 out.push((name, sweep.tags.len()));
             }
         }
@@ -336,8 +372,27 @@ impl SweepStore {
         Ok(out)
     }
 
+    /// A sweep folder: sweep.json, or only the temp file an interrupted
+    /// write left behind (load_sweep recovers that).
+    pub fn has_sweep(&self, dir_name: &str) -> bool {
+        let json = self.sweep_json_path(dir_name);
+        json.exists() || tmp_path(&json).exists()
+    }
+
     pub fn load_sweep(&self, dir_name: &str) -> io::Result<Sweep> {
-        let raw = fs::read_to_string(self.sweep_json_path(dir_name))?;
+        let json = self.sweep_json_path(dir_name);
+        let tmp = tmp_path(&json);
+        let raw = match with_retry(|| fs::read_to_string(&json)) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == io::ErrorKind::NotFound && tmp.exists() => {
+                // Builds before 0.4.1 could lose sweep.json mid-write and
+                // leave the whole sweep in the temp file. Put it back.
+                let raw = with_retry(|| fs::read_to_string(&tmp))?;
+                let _ = fs::rename(&tmp, &json);
+                raw
+            }
+            Err(e) => return Err(e),
+        };
         // Tolerate a UTF-8 BOM: hand-edited files often carry one.
         let raw = raw.trim_start_matches('\u{feff}');
         serde_json::from_str(raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
@@ -364,6 +419,7 @@ impl SweepStore {
 
     /// Append a tag to a sweep and persist immediately.
     pub fn append_tag(&self, dir_name: &str, tag: Tag) -> io::Result<Sweep> {
+        let _guard = store_lock();
         let mut sweep = self.load_sweep(dir_name)?;
         sweep.tags.push(tag);
         self.save_sweep(dir_name, &sweep)?;
@@ -391,6 +447,7 @@ impl SweepStore {
         area: &str,
         target: &str,
     ) -> io::Result<Sweep> {
+        let _guard = store_lock();
         let mut sweep = self.load_sweep(dir_name)?;
         let tag = sweep
             .tags
@@ -412,6 +469,7 @@ impl SweepStore {
         number: u32,
         attachment: Attachment,
     ) -> io::Result<Sweep> {
+        let _guard = store_lock();
         let mut sweep = self.load_sweep(dir_name)?;
         let tag = sweep
             .tags
@@ -431,6 +489,7 @@ impl SweepStore {
         number: u32,
         carried: Option<CarriedFrom>,
     ) -> io::Result<Sweep> {
+        let _guard = store_lock();
         let mut sweep = self.load_sweep(dir_name)?;
         let tag = sweep
             .tags
@@ -456,6 +515,7 @@ impl SweepStore {
         to_dir: &str,
         now_utc: &str,
     ) -> io::Result<Tag> {
+        let _guard = store_lock();
         let source_sweep = self.load_sweep(from_dir)?;
         let source = source_sweep
             .tags
@@ -517,6 +577,7 @@ impl SweepStore {
     /// Soft delete: dropped tags stay in sweep.json so a later sweep can
     /// pick them back up.
     pub fn set_dropped(&self, dir_name: &str, number: u32, dropped: bool) -> io::Result<Sweep> {
+        let _guard = store_lock();
         let mut sweep = self.load_sweep(dir_name)?;
         let tag = sweep
             .tags
@@ -531,6 +592,7 @@ impl SweepStore {
     /// Reorder tags to match `order` (a list of tag numbers). Tags not named
     /// in the list keep their relative order after the named ones.
     pub fn reorder_tags(&self, dir_name: &str, order: &[u32]) -> io::Result<Sweep> {
+        let _guard = store_lock();
         let mut sweep = self.load_sweep(dir_name)?;
         let mut remaining = std::mem::take(&mut sweep.tags);
         let mut reordered = Vec::with_capacity(remaining.len());
@@ -1164,6 +1226,52 @@ mod tests {
         fs::write(&path, with_bom).unwrap();
         let loaded = store.load_sweep(&name).unwrap();
         assert_eq!(loaded, sweep);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn a_save_while_a_reader_holds_the_file_keeps_sweep_json() {
+        let store = SweepStore::new(tmp_root("held"));
+        let (name, _) = store.create_sweep("s", "2026-08-13T10:00:00Z").unwrap();
+        let path = store.sweep_json_path(&name);
+        // The Review section reading the file at the moment a tag is saved.
+        let reader = fs::File::open(&path).unwrap();
+        store.append_tag(&name, sample_tag(1)).unwrap();
+        drop(reader);
+        assert!(path.exists());
+        assert!(!tmp_path(&path).exists());
+        assert_eq!(store.load_sweep(&name).unwrap().tags.len(), 1);
+        assert_eq!(store.list_sweeps().unwrap().len(), 1);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn a_sweep_left_only_in_the_temp_file_is_recovered() {
+        let store = SweepStore::new(tmp_root("tmp-only"));
+        let (name, _) = store.create_sweep("s", "2026-08-13T10:00:00Z").unwrap();
+        store.append_tag(&name, sample_tag(1)).unwrap();
+        store.append_tag(&name, sample_tag(2)).unwrap();
+        let path = store.sweep_json_path(&name);
+        // What an older build's failed remove-then-rename left behind.
+        fs::rename(&path, tmp_path(&path)).unwrap();
+        let listed = store.list_sweeps().unwrap();
+        assert_eq!(listed, vec![(name.clone(), 2)]);
+        assert!(path.exists());
+        assert_eq!(store.marked_active_sweep().as_deref(), Some(name.as_str()));
+        store.append_tag(&name, sample_tag(3)).unwrap();
+        assert_eq!(store.load_sweep(&name).unwrap().tags.len(), 3);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn one_broken_sweep_does_not_hide_the_others() {
+        let store = SweepStore::new(tmp_root("broken"));
+        store.create_sweep("good", "2026-08-12T10:00:00Z").unwrap();
+        let (bad, _) = store.create_sweep("bad", "2026-08-13T10:00:00Z").unwrap();
+        fs::write(store.sweep_json_path(&bad), "{ not json").unwrap();
+        let listed = store.list_sweeps().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].0, "2026-08-12-good");
         let _ = fs::remove_dir_all(store.root());
     }
 

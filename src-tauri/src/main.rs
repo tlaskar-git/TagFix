@@ -1,4 +1,4 @@
-﻿// TagFix: tag what is wrong on screen, get a fix list out.
+// TagFix: tag what is wrong on screen, get a fix list out.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod hook;
@@ -754,6 +754,7 @@ fn finish_attachment(
                 "attach: {} crop added to tag {}",
                 attach.label, attach.number
             ));
+            let _ = app.emit("tags-changed", sweep_name.clone());
             toast(app, &format!("attached to tag {}", attach.number), 1800);
         }
         Err(e) => {
@@ -1120,6 +1121,11 @@ fn save_tag(
     store
         .append_tag(&pending.sweep_name, tag)
         .map_err(|e| e.to_string())?;
+    // The main window hides rather than closes, so a Review section opened
+    // earlier in the session is still showing the tags it loaded then. Tell
+    // it; the payload names the sweep, which the day rollover may have just
+    // created.
+    let _ = app.emit("tags-changed", pending.sweep_name.clone());
 
     {
         // Ctrl+Shift+A attaches to this one, and Ctrl+Up recalls what was
@@ -1725,7 +1731,7 @@ fn run_diag() -> i32 {
                 .map(|o| {
                     String::from_utf8_lossy(&o.stdout)
                         .lines()
-                        .filter(|l| l.contains("tagfix.exe") && !l.contains(&format!("\"{}\"", me)))
+                        .filter(|l| l.to_ascii_lowercase().contains("tagfix.exe") && !l.contains(&format!("\"{}\"", me)))
                         .count()
                 })
                 .unwrap_or(0)

@@ -77,7 +77,7 @@ Edge or Chrome already on the machine.
 ## Install
 
 1. Download
-   [tagfix.exe](https://github.com/tlaskar-git/TagFix/raw/main/dist/tagfix.exe)
+   [TagFix.exe](https://github.com/tlaskar-git/TagFix/raw/main/dist/TagFix.exe)
    (portable, unsigned, x64, about 10 MB). No installer, no admin rights.
    Windows SmartScreen may warn because the exe is unsigned: More info,
    Run anyway.
@@ -312,7 +312,7 @@ set RUSTFLAGS=-C target-feature=+crt-static --remap-path-prefix=%USERPROFILE%\.c
 cargo build --release
 ```
 
-The `dist/tagfix.exe` in this repo is built that way.
+The `dist/TagFix.exe` in this repo is built that way, then renamed from `tagfix.exe`.
 
 The UI harness runs the vanilla JS under a small DOM shim in Node, since
 this UI needs a WebView2 window no test runner can open. Run it from the

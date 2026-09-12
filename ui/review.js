@@ -253,7 +253,12 @@
       ta.focus();
       const done = async () => {
         await saveTagEdit(tag, { text: ta.value.trim() });
-        renderTags();
+        if (refreshPending) {
+          refreshPending = false;
+          await refresh();
+        } else {
+          renderTags();
+        }
       };
       ta.addEventListener("blur", done);
       ta.addEventListener("keydown", (ev) => {
@@ -327,6 +332,10 @@
       } catch (err) {
         setStatus("reorder failed: " + err);
       }
+      if (refreshPending) {
+        refreshPending = false;
+        await refresh();
+      }
     });
     li.addEventListener("dragover", (ev) => {
       ev.preventDefault();
@@ -353,7 +362,18 @@
     setStatus(tags.length + " tags loaded");
   }
 
-  async function loadSweepList(preferred) {
+  // Saves, tray opens and new sweeps can all ask for a reload at once. Run
+  // them one after another: two interleaved runs clear and fill the same
+  // selector and list over each other.
+  let listChain = Promise.resolve();
+
+  function loadSweepList(preferred) {
+    const run = listChain.then(() => loadSweepListNow(preferred));
+    listChain = run.catch(() => {});
+    return run;
+  }
+
+  async function loadSweepListNow(preferred) {
     const sweeps = await invoke("list_sweeps");
     sweepNames = sweeps.map((s) => s[0]);
     sweepSelect.innerHTML = "";
@@ -636,5 +656,34 @@
     loadSweepList(event.payload);
   });
 
-  loadTargets().then(() => loadSweepList());
+  // The window hides rather than closes, so without these the list keeps
+  // whatever it loaded when the window was first opened and every tag saved
+  // after that is missing until TagFix restarts. The sweep list is reloaded
+  // too, for the counts and for a sweep the day rollover just started; the
+  // selected sweep stays selected.
+  let refreshPending = false;
+
+  async function refresh() {
+    // Rebuilding the rows under an open text edit would throw it away, so
+    // wait for the edit to finish; its blur handler calls back in.
+    const active = document.activeElement;
+    if (dragRow || (active && active.tagName === "TEXTAREA" && tagList.contains(active))) {
+      refreshPending = true;
+      return;
+    }
+    try {
+      await loadSweepList();
+    } catch (err) {
+      setStatus("refresh failed: " + err);
+    }
+  }
+
+  listen("tags-changed", () => refresh());
+  listen("show-section", (event) => {
+    if (event.payload === "review") refresh();
+  });
+
+  loadTargets()
+    .then(() => loadSweepList())
+    .catch((err) => setStatus("could not load sweeps: " + err));
 })();

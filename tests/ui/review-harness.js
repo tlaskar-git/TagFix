@@ -422,10 +422,32 @@ tick(() => {
                               byId["status"].textContent === "created 2026-09-08-round-99",
                               byId["status"].textContent);
 
-                            console.log(failures === 0
-                              ? "\nALL REVIEW CHECKS PASSED"
-                              : "\n" + failures + " REVIEW CHECKS FAILED");
-                            process.exit(failures === 0 ? 0 : 1);
+                            // 11. A tag saved while the window is hidden
+                            //     reloads the open sweep and keeps it selected.
+                            const loadsBefore = callsNamed("load_sweep").length;
+                            for (const fn of listeners["tags-changed"] || []) {
+                              fn({ payload: "2026-09-08-round-99" });
+                            }
+                            tick(() => {
+                              check("tags-changed reloads the tags",
+                                callsNamed("load_sweep").length > loadsBefore);
+                              check("tags-changed keeps the selected sweep",
+                                byId["sweep-select"].value === "2026-09-08-round-99",
+                                byId["sweep-select"].value);
+                              const showBefore = callsNamed("load_sweep").length;
+                              for (const fn of listeners["show-section"] || []) {
+                                fn({ payload: "review" });
+                              }
+                              tick(() => {
+                                check("showing the review section reloads the tags",
+                                  callsNamed("load_sweep").length > showBefore);
+
+                                console.log(failures === 0
+                                  ? "\nALL REVIEW CHECKS PASSED"
+                                  : "\n" + failures + " REVIEW CHECKS FAILED");
+                                process.exit(failures === 0 ? 0 : 1);
+                              });
+                            });
                           });
                         });
                       });
